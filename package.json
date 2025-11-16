@@ -1,0 +1,28 @@
+{
+  "name": "poker-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "nodemon index.js",
+    "worker": "nodemon worker/worker.js",
+    "dev": "concurrently \"npm start\" \"npm run worker\""
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "better-sqlite3": "^12.2.0",
+    "bull": "^4.16.5",
+    "dayjs": "^1.11.13",
+    "dotenv": "^16.4.5",
+    "express": "^5.1.0",
+    "express-basic-auth": "^1.2.1",
+    "node-cron": "^3.0.3",
+    "sequelize": "^6.35.1",
+    "sqlite3": "^5.1.6",
+    "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "concurrently": "^8.2.2"
+  }
+}
