@@ -6,6 +6,8 @@ import basicAuth from "express-basic-auth";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc.js";
 import Database from "better-sqlite3";
+import fs from 'fs';
+import path from 'path';
 import {User, Group, Event, RegistrationLog} from './db.js';
 import {logError} from "./utils/logError.js";
 import config from "./config.js";
@@ -24,6 +26,11 @@ import {schedulePublish} from "./actions/schedulePublish.js";
 import {schedulePost} from "./cronJobs/schedulePost.js";
 
 dayjs.extend(utc)
+
+const logsDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+}
 
 const app = express();
 const auth = basicAuth({
