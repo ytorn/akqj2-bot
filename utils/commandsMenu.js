@@ -11,10 +11,10 @@ export const updateUserCommands = async (userId, chatId, telegram) => {
         commands.push({ command: 'create_event', description: 'Створити нову подію' });
         commands.push({ command: 'cancel', description: 'Перервати створення події' });
         commands.push({ command: 'list_events', description: 'Відобразити поточні події та драфти' });
+        commands.push({ command: 'buy_chips', description: 'Купити фішки' });
+        commands.push({ command: 'buy_chips_cancel', description: 'Перервати купівлю фішок' });
     }
 
-    commands.push({ command: 'buy_chips', description: 'Купити фішки' });
-    commands.push({ command: 'buy_chips_cancel', description: 'Перервати купівлю фішок' });
     commands.push({ command: 'settings', description: 'Налаштування' });
     commands.push({ command: 'help', description: 'Інформація та підтримка' });
 

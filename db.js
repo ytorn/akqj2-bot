@@ -65,6 +65,10 @@ export const ChipsLog = sequelize.define('chips_log', {
         allowNull: false,
         field: 'event_id',
     },
+    regId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+    },
     amount: DataTypes.INTEGER,
     confirmed: DataTypes.BOOLEAN,
 });
