@@ -70,15 +70,6 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
     const endIndex = Math.min(startIndex + playersPerPage, registrations.length);
     const pageRegistrations = registrations.slice(startIndex, endIndex);
 
-    const friendIndices = {};
-    for (let i = 0; i < registrations.length; i++) {
-        const reg = registrations[i];
-        if (reg.type === 'friend') {
-            friendIndices[reg.userId] = (friendIndices[reg.userId] || 0) + 1;
-            reg._friendIndex = friendIndices[reg.userId];
-        }
-    }
-
     const playerButtons = [];
     const buttonsPerRow = 2;
     
@@ -91,7 +82,7 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
             let displayName;
 
             if (reg.type === 'friend') {
-                displayName = `➕ від ${userName} (${reg._friendIndex})`;
+                displayName = `➕ від ${userName} (ID ${reg.id})`;
             } else {
                 displayName = userName;
             }
@@ -102,7 +93,7 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
 
             return {
                 text: displayName,
-                callback_data: `buy_chips_player_${event.id}_${reg.userId}`
+                callback_data: `buy_chips_player_${event.id}_${reg.userId}_${reg.id}`
             };
         }).filter(btn => btn !== null);
         
@@ -283,18 +274,20 @@ buyChips.action('buy_chips_back_to_events', async (ctx) => {
 
         ctx.scene.state.event = null;
         ctx.scene.state.user = null;
+        ctx.scene.state.regId = null;
     } catch (err) {
         logError('❌ Error going back to events', err);
         return await ctx.scene.leave();
     }
 });
 
-buyChips.action(/^buy_chips_player_(\d+)_(\d+)$/, async (ctx) => {
+buyChips.action(/^buy_chips_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
         
         const eventId = parseInt(ctx.match[1]);
         const userId = parseInt(ctx.match[2]);
+        const regId = parseInt(ctx.match[3]);
 
         const event = await Event.findByPk(eventId);
         const user = await User.findByPk(userId);
@@ -306,10 +299,21 @@ buyChips.action(/^buy_chips_player_(\d+)_(\d+)$/, async (ctx) => {
 
         ctx.scene.state.event = event;
         ctx.scene.state.user = user;
+        ctx.scene.state.regId = regId;
 
+        // Check if this is a friend registration
+        const registration = await RegistrationLog.findByPk(regId);
         const userName = formatUsername(user);
+        
+        let displayName;
+        if (registration && registration.type === 'friend') {
+            displayName = `➕ від ${userName} (ID ${regId})`;
+        } else {
+            displayName = userName;
+        }
+
         await ctx.editMessageText(
-            `💵 Введіть кількість фішок для ${userName}:`,
+            `💵 Введіть кількість фішок для ${displayName}:`,
             { reply_markup: { inline_keyboard: [] } }
         );
     } catch (err) {
@@ -346,8 +350,8 @@ buyChips.on('text', async (ctx) => {
             return await ctx.scene.leave();
         }
 
-        const { event, user } = ctx.scene.state;
-        if (!event || !user) {
+        const { event, user, regId } = ctx.scene.state;
+        if (!event || !user || !regId) {
             await ctx.reply('❌ Будь ласка, спочатку оберіть подію та гравця через кнопки.');
             return;
         }
@@ -361,12 +365,22 @@ buyChips.on('text', async (ctx) => {
         await ChipsLog.create({
             userId: user.id,
             eventId: event.id,
+            regId: regId,
             amount: amount,
             confirmed: false
         });
 
+        const registration = await RegistrationLog.findByPk(regId);
         const userName = formatUsername(user);
-        await ctx.reply(`✅ Запис про покупку ${amount} фішок для ${userName} створено.`);
+        
+        let displayName;
+        if (registration && registration.type === 'friend') {
+            displayName = `➕ від ${userName} (ID ${regId})`;
+        } else {
+            displayName = userName;
+        }
+
+        await ctx.reply(`✅ Запис про покупку ${amount} фішок для ${displayName} створено.`);
         return await ctx.scene.leave();
     } catch (err) {
         logError('❌ Error in buyChips text handler', err);

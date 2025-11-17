@@ -1,9 +1,10 @@
 import { isUserAdminInGroup } from "../utils/isUserAdminInGroup.js";
-import { Event, ChipsLog, User } from "../db.js";
+import { Event, ChipsLog, User, RegistrationLog } from "../db.js";
 import { Op } from "sequelize";
 import { adminControlButtons } from "../utils/adminControlButtons.js";
 import { eventItem, eventsNotFound } from "../messages/index.js";
 import { getClickableName } from "../utils/getClickableName.js";
+import { formatUsername } from "../utils/formatUsername.js";
 import config from "../config.js";
 import dayjs from "dayjs";
 
@@ -56,29 +57,52 @@ export const listEvents = async (ctx) => {
             usersMap[user.id] = user;
         }
 
-        const chipsByUser = {};
+        // Get all registration logs for this event to check types
+        const regIds = [...new Set(chipsLogs.map(log => log.regId))];
+        const registrations = await RegistrationLog.findAll({
+            where: {
+                id: { [Op.in]: regIds }
+            }
+        });
+        const registrationsMap = {};
+        for (const reg of registrations) {
+            registrationsMap[reg.id] = reg;
+        }
+
+        const chipsByReg = {};
         for (const log of chipsLogs) {
             const userId = log.userId;
             const user = usersMap[userId];
             if (!user) continue;
             
-            if (!chipsByUser[userId]) {
-                chipsByUser[userId] = {
+            const regId = log.regId;
+            if (!chipsByReg[regId]) {
+                chipsByReg[regId] = {
                     user: user,
+                    regId: regId,
+                    registration: registrationsMap[regId],
                     amounts: []
                 };
             }
-            chipsByUser[userId].amounts.push(log.amount);
+            chipsByReg[regId].amounts.push(log.amount);
         }
 
         let chipsInfoText = '';
-        if (Object.keys(chipsByUser).length > 0) {
+        if (Object.keys(chipsByReg).length > 0) {
             chipsInfoText = '\n\n<b>Інформація про покупки:</b>\n';
-            for (const userId in chipsByUser) {
-                const { user, amounts } = chipsByUser[userId];
+            for (const regId in chipsByReg) {
+                const { user, amounts, registration } = chipsByReg[regId];
                 const total = amounts.reduce((sum, amount) => sum + amount, 0);
                 const amountsStr = amounts.join(' + ');
-                chipsInfoText += `${getClickableName(user)}: <b>${total}</b> (${amountsStr})\n`;
+                
+                let displayName;
+                if (registration && registration.type === 'friend') {
+                    displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
+                } else {
+                    displayName = getClickableName(user);
+                }
+                
+                chipsInfoText += `${displayName}: <b>${total}</b> (${amountsStr})\n`;
             }
         }
 
