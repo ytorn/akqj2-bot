@@ -7,7 +7,7 @@ const config = {
     production: {
         apiUrl: process.env.API_URL,
         botToken: process.env.BOT_TOKEN,
-        groupId: -5098122039,
+        groupId: -4599255149,
     },
     test: {
         apiUrl: process.env.API_TEST_URL,
