@@ -1,0 +1,68 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+        
+    - name: Install dependencies locally
+      run: npm ci
+      
+    # - name: Run tests (if any)
+    #   run: |
+    #     echo "Running tests..."
+    #     # Add your test commands here if you have any
+    #     # npm test
+        
+    - name: Deploy to production server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.SSH_KEY }}
+        port: ${{ secrets.PORT }}
+        script: |
+          set -e
+          echo "🚀 Starting deployment..."
+
+          # Load nvm
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+          
+          # Navigate to your application directory
+          # Update this path to match your production server setup
+          APP_DIR="${{ secrets.APP_DIR }}"
+          cd "$APP_DIR"
+          
+          echo "📦 Pulling latest changes..."
+          git fetch origin master
+          git fetch origin master
+          git reset --hard origin/master
+          
+          echo "📦 Installing dependencies..."
+          npm install
+          
+                     echo "🔄 Restarting PM2 processes..."
+           pm2 restart ecosystem.config.cjs
+          
+          echo "✅ Deployment completed successfully!"
+          
+          # Show PM2 status
+          echo "📊 PM2 Status:"
+          pm2 status
+      env:
+          NODE_ENV: production 
