@@ -6,7 +6,7 @@ export const formatEventMessage = (event, isClosed) => {
 📍 ${event.location}
 ⏰ ${dayjs(event.time).format('dddd, DD.MM, HH:mm')}
 👥 ${event.players} гравців
-💵 Бай-ін: ${event.buyin}
+💵 Вхід: ${event.blinds}
 
 ❗ ${event.description}
 

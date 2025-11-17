@@ -1,9 +1,11 @@
 import { isUserAdminInGroup } from "../utils/isUserAdminInGroup.js";
-import { Event } from "../db.js";
+import { Event, ChipsLog, User } from "../db.js";
 import { Op } from "sequelize";
 import { adminControlButtons } from "../utils/adminControlButtons.js";
 import { eventItem, eventsNotFound } from "../messages/index.js";
+import { getClickableName } from "../utils/getClickableName.js";
 import config from "../config.js";
+import dayjs from "dayjs";
 
 export const listEvents = async (ctx) => {
     if (ctx.chat.type !== 'private') return;
@@ -12,13 +14,19 @@ export const listEvents = async (ctx) => {
     const isAdmin = await isUserAdminInGroup(ctx.telegram, config.groupId, fromId);
     if (!isAdmin) return ctx.reply('⛔ Admins only');
 
+    const now = dayjs.utc().toDate();
+    const twelveHours = 12 * 60 * 60 * 1000;
+    const twelveHoursAgo = new Date(now.getTime() - twelveHours);
+
     const events = await Event.findAll({
         where: {
             [Op.or]: [
                 { is_draft: true },
                 {
                     is_draft: false,
-                    time: { [Op.gt]: new Date() }
+                    time: { 
+                        [Op.gt]: twelveHoursAgo
+                    }
                 }
             ]
         },
@@ -30,14 +38,60 @@ export const listEvents = async (ctx) => {
     for (const event of events) {
         const isClosed = event.is_closed;
 
+        const chipsLogs = await ChipsLog.findAll({
+            where: {
+                eventId: event.id
+            },
+            order: [['createdAt', 'ASC']]
+        });
+
+        const userIds = [...new Set(chipsLogs.map(log => log.userId))];
+        const users = await User.findAll({
+            where: {
+                id: { [Op.in]: userIds }
+            }
+        });
+        const usersMap = {};
+        for (const user of users) {
+            usersMap[user.id] = user;
+        }
+
+        const chipsByUser = {};
+        for (const log of chipsLogs) {
+            const userId = log.userId;
+            const user = usersMap[userId];
+            if (!user) continue;
+            
+            if (!chipsByUser[userId]) {
+                chipsByUser[userId] = {
+                    user: user,
+                    amounts: []
+                };
+            }
+            chipsByUser[userId].amounts.push(log.amount);
+        }
+
+        let chipsInfoText = '';
+        if (Object.keys(chipsByUser).length > 0) {
+            chipsInfoText = '\n\n<b>Інформація про покупки:</b>\n';
+            for (const userId in chipsByUser) {
+                const { user, amounts } = chipsByUser[userId];
+                const total = amounts.reduce((sum, amount) => sum + amount, 0);
+                const amountsStr = amounts.join(' + ');
+                chipsInfoText += `${getClickableName(user)}: <b>${total}</b> (${amountsStr})\n`;
+            }
+        }
+
+        const eventText = eventItem(event) + chipsInfoText;
+
         if (event.image_url) {
             await ctx.replyWithPhoto(event.image_url, {
-                caption: eventItem(event),
+                caption: eventText,
                 parse_mode: 'HTML',
                 reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
             });
         } else {
-            await ctx.replyWithHTML(eventItem(event), {
+            await ctx.replyWithHTML(eventText, {
                 reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
             });
         }

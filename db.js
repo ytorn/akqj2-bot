@@ -31,10 +31,11 @@ export const Event = sequelize.define('event', {
     location: DataTypes.STRING,
     time: DataTypes.DATE,
     players: DataTypes.INTEGER,
-    buyin: DataTypes.INTEGER,
+    blinds: DataTypes.STRING,
     description: DataTypes.TEXT,
     image_url: { type: DataTypes.STRING, allowNull: true },
     is_closed: { type: DataTypes.BOOLEAN, defaultValue: false },
+    dealer_id: DataTypes.INTEGER,
 });
 
 export const RegistrationLog = sequelize.define('registration_log', {
@@ -51,6 +52,21 @@ export const RegistrationLog = sequelize.define('registration_log', {
     type: DataTypes.STRING,
     join_time: { type: DataTypes.DATE, allowNull: true },
     is_waiting: { type: DataTypes.BOOLEAN, defaultValue: false }
+});
+
+export const ChipsLog = sequelize.define('chips_log', {
+    userId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: 'user_id',
+    },
+    eventId: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        field: 'event_id',
+    },
+    amount: DataTypes.INTEGER,
+    confirmed: DataTypes.BOOLEAN,
 });
 
 export const Message = sequelize.define('message', {

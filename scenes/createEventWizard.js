@@ -53,11 +53,11 @@ export const createEventWizard = new Scenes.WizardScene(
     },
     async (ctx) => {
         ctx.wizard.state.data.players = parseInt(ctx.message.text) || 0;
-        await ctx.reply('💵 Введіть мінімальний бай-ін:');
+        await ctx.reply('💵 Введіть вхід:');
         return ctx.wizard.next();
     },
     async (ctx) => {
-        ctx.wizard.state.data.buyin = parseInt(ctx.message.text) || 0;
+        ctx.wizard.state.data.blinds = ctx.message.text;
         await ctx.reply('📝 Введіть опис:');
         return ctx.wizard.next();
     },

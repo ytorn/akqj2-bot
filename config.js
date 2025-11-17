@@ -12,7 +12,7 @@ const config = {
     test: {
         apiUrl: process.env.API_TEST_URL,
         botToken: process.env.BOT_TEST_TOKEN,
-        groupId: -5098122039,
+        groupId: -5048887833,
     }
 };
 

@@ -12,6 +12,7 @@ import config from "./config.js";
 import {voteForEvent} from "./actions/voteForEvent.js";
 import {createEventWizard} from "./scenes/createEventWizard.js";
 import {schedulePublishScene} from "./scenes/schedulePublishScene.js";
+import {buyChips} from "./scenes/buyChips.js";
 import {welcome} from "./messages/index.js";
 import {updateUserCommands} from "./utils/commandsMenu.js";
 import {isUserAdminInGroup} from "./utils/isUserAdminInGroup.js";
@@ -36,7 +37,7 @@ app.use("/admin", auth);
 const db = new Database("eventbot.sqlite");
 const bot = new Telegraf(config.botToken);
 
-const stage = new Scenes.Stage([createEventWizard, schedulePublishScene]);
+const stage = new Scenes.Stage([createEventWizard, schedulePublishScene, buyChips]);
 
 bot.use(session());
 bot.use(stage.middleware());
@@ -112,6 +113,17 @@ bot.action(/event_delete_(\d+)/, async (ctx) => {
 
 bot.action(/event_schedule_(\w+)_(\d+)/, async (ctx) => {
     await schedulePublish()(ctx);
+});
+
+bot.command('buy_chips', async (ctx) => {
+    return ctx.scene.enter('buy_chips')
+});
+
+bot.command('buy_chips_cancel', async (ctx) => {
+    if (ctx.scene && ctx.scene.current && ctx.scene.current.id === 'buy_chips') {
+        await ctx.reply('❌ Купівлю фішок скасовано.');
+        return await ctx.scene.leave();
+    }
 });
 
 bot.catch(async (err, ctx) => {

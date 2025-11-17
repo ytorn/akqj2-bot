@@ -16,7 +16,7 @@ export const eventPreview = (preview) => `
 📍 Локація: ${preview.location}
 ⏰ Дата та час: ${dayjs(preview.time).format('dddd, DD.MM, HH:mm')}
 👥 Гравців: ${preview.players}
-💵 Бай-ін: ${preview.buyin}
+💵 Вхід: ${preview.blinds}
 
 📝 ${preview.description}
 
@@ -28,7 +28,7 @@ export const eventItem = (event) => `
 📍 ${event.location}
 ⏰ ${dayjs(event.time).format('dddd, DD.MM, HH:mm')}
 👥 ${event.players} гравців
-💵 Бай-ін: ${event.buyin}
+💵 Вхід: ${event.blinds}
 
 ❗ ${event.description}${event.scheduled_publish_at
     ? `\n\n<b>Публікацію заплановано на ${dayjs(event.scheduled_publish_at).format('dddd, DD.MM, HH:mm')}</b>`
@@ -38,4 +38,7 @@ export const eventItem = (event) => `
 
 export const eventsNotFound = `❌ Не вдалося знайти події.
 Створити нову подію можна за допомогою /create_event
+`
+
+export const noOngoingEvents = `❌ У тебе немає активних подій в поточний момент.
 `

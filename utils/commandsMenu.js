@@ -13,6 +13,8 @@ export const updateUserCommands = async (userId, chatId, telegram) => {
         commands.push({ command: 'list_events', description: 'Відобразити поточні події та драфти' });
     }
 
+    commands.push({ command: 'buy_chips', description: 'Купити фішки' });
+    commands.push({ command: 'buy_chips_cancel', description: 'Перервати купівлю фішок' });
     commands.push({ command: 'settings', description: 'Налаштування' });
     commands.push({ command: 'help', description: 'Інформація та підтримка' });
 
