@@ -24,6 +24,8 @@ export const refreshEventMessage = async (event, isClosed) => {
         const thinking = [];
         const friends = []
 
+        let joinIndex = 0;
+
         for (const log of logs) {
             const user = await User.findByPk(log.userId)
 
@@ -32,20 +34,30 @@ export const refreshEventMessage = async (event, isClosed) => {
             }
 
             if (log.type === 'join') {
-                joined.push(`✅  ${getClickableName(user)}`);
+                joinIndex++;
+                const index = joinIndex;
+                const emoji = index > event.players ? '⏳' : '✅';
+                joined.push(`${emoji} ${getClickableName(user)}`);
             }
 
             if (log.type === 'not') {
-                notGoing.push(`❌  ${getClickableName(user)}`);
+                notGoing.push(`❌ ${getClickableName(user)}`);
             }
 
             if (log.type === 'maybe') {
-                thinking.push(`🤔  ${getClickableName(user)}`);
+                thinking.push(`🤔 ${getClickableName(user)}`);
             }
 
             if (log.type === 'friend') {
-                joined.push(`➕ від  ${getClickableName(user)}`);
-                friends.push(`➕ від  ${getClickableName(user)}`)
+                joinIndex++;
+                const index = joinIndex;
+                if (index > event.players) {
+                    joined.push(`⏳➕ від ${getClickableName(user)}`);
+                    friends.push(`⏳➕ від ${getClickableName(user)}`);
+                } else {
+                    joined.push(`➕ від ${getClickableName(user)}`);
+                    friends.push(`➕ від ${getClickableName(user)}`);
+                }
             }
         }
 

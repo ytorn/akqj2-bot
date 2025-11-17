@@ -1,5 +1,3 @@
-const path = require('path');
-
 module.exports = {
     apps: [
         {
@@ -12,9 +10,9 @@ module.exports = {
             env: {
                 NODE_ENV: 'production'
             },
-            error_file: path.join(__dirname, 'logs', 'err.log'),
-            out_file: path.join(__dirname, 'logs', 'out.log'),
-            log_file: path.join(__dirname, 'logs', 'combined.log'),
+            error_file: './logs/err.log',
+            out_file: './logs/out.log',
+            log_file: './logs/combined.log',
             time: true
         }
     ]
