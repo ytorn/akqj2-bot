@@ -39,14 +39,24 @@ export const listEvents = async (ctx) => {
     for (const event of events) {
         const isClosed = event.is_closed;
 
-        const chipsLogs = await ChipsLog.findAll({
+        const purchaseLogs = await ChipsLog.findAll({
             where: {
-                eventId: event.id
+                eventId: event.id,
+                is_final: false
             },
             order: [['createdAt', 'ASC']]
         });
 
-        const userIds = [...new Set(chipsLogs.map(log => log.userId))];
+        const finalLogs = await ChipsLog.findAll({
+            where: {
+                eventId: event.id,
+                is_final: true
+            },
+            order: [['createdAt', 'ASC']]
+        });
+
+        const allLogs = [...purchaseLogs, ...finalLogs];
+        const userIds = [...new Set(allLogs.map(log => log.userId))];
         const users = await User.findAll({
             where: {
                 id: { [Op.in]: userIds }
@@ -57,11 +67,10 @@ export const listEvents = async (ctx) => {
             usersMap[user.id] = user;
         }
 
-        // Get all registration logs for this event to check types
-        const regIds = [...new Set(chipsLogs.map(log => log.regId))];
+        const allRegIds = [...new Set(allLogs.map(log => log.regId))];
         const registrations = await RegistrationLog.findAll({
             where: {
-                id: { [Op.in]: regIds }
+                id: { [Op.in]: allRegIds }
             }
         });
         const registrationsMap = {};
@@ -70,7 +79,7 @@ export const listEvents = async (ctx) => {
         }
 
         const chipsByReg = {};
-        for (const log of chipsLogs) {
+        for (const log of purchaseLogs) {
             const userId = log.userId;
             const user = usersMap[userId];
             if (!user) continue;
@@ -85,6 +94,23 @@ export const listEvents = async (ctx) => {
                 };
             }
             chipsByReg[regId].amounts.push(log.amount);
+        }
+
+        const finalByReg = {};
+        for (const log of finalLogs) {
+            const userId = log.userId;
+            const user = usersMap[userId];
+            if (!user) continue;
+            
+            const regId = log.regId;
+            if (!finalByReg[regId]) {
+                finalByReg[regId] = {
+                    user: user,
+                    regId: regId,
+                    registration: registrationsMap[regId],
+                    amount: log.amount
+                };
+            }
         }
 
         let chipsInfoText = '';
@@ -103,6 +129,22 @@ export const listEvents = async (ctx) => {
                 }
                 
                 chipsInfoText += `${displayName}: <b>${total}</b> (${amountsStr})\n`;
+            }
+        }
+
+        if (Object.keys(finalByReg).length > 0) {
+            chipsInfoText += '\n\n<b>Фінальний результат:</b>\n';
+            for (const regId in finalByReg) {
+                const { user, amount, registration } = finalByReg[regId];
+                
+                let displayName;
+                if (registration && registration.type === 'friend') {
+                    displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
+                } else {
+                    displayName = getClickableName(user);
+                }
+                
+                chipsInfoText += `${displayName}: <b>${amount}</b>\n`;
             }
         }
 

@@ -7,7 +7,8 @@
     "start": "nodemon index.js",
     "worker": "nodemon worker/worker.js",
     "dev": "concurrently \"npm start\" \"npm run worker\"",
-    "migrate:add-regId": "node migrations/add-regId-to-chipsLog.js"
+    "migrate:add-regId": "node migrations/add-regId-to-chipsLog.js",
+    "migrate:add-is_final": "node migrations/add-is_final-to-chipsLog.js"
   },
   "dependencies": {
     "axios": "^1.11.0",

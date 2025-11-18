@@ -15,6 +15,7 @@ import {voteForEvent} from "./actions/voteForEvent.js";
 import {createEventWizard} from "./scenes/createEventWizard.js";
 import {schedulePublishScene} from "./scenes/schedulePublishScene.js";
 import {buyChips} from "./scenes/buyChips.js";
+import {finalCount} from "./scenes/finalCount.js";
 import {welcome} from "./messages/index.js";
 import {updateUserCommands} from "./utils/commandsMenu.js";
 import {isUserAdminInGroup} from "./utils/isUserAdminInGroup.js";
@@ -44,7 +45,7 @@ app.use("/admin", auth);
 const db = new Database("eventbot.sqlite");
 const bot = new Telegraf(config.botToken);
 
-const stage = new Scenes.Stage([createEventWizard, schedulePublishScene, buyChips]);
+const stage = new Scenes.Stage([createEventWizard, schedulePublishScene, buyChips, finalCount]);
 
 bot.use(session());
 bot.use(stage.middleware());
@@ -131,6 +132,10 @@ bot.command('buy_chips_cancel', async (ctx) => {
         await ctx.reply('❌ Купівлю фішок скасовано.');
         return await ctx.scene.leave();
     }
+});
+
+bot.command('final_count', async (ctx) => {
+    return ctx.scene.enter('final_count')
 });
 
 bot.catch(async (err, ctx) => {

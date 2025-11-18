@@ -71,6 +71,10 @@ export const ChipsLog = sequelize.define('chips_log', {
     },
     amount: DataTypes.INTEGER,
     confirmed: DataTypes.BOOLEAN,
+    is_final: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false,
+    },
 });
 
 export const Message = sequelize.define('message', {

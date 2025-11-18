@@ -7,9 +7,9 @@ import {isUserAdminInGroup} from "../utils/isUserAdminInGroup.js";
 import config from "../config.js";
 import {formatUsername} from "../utils/formatUsername.js";
 
-export const buyChips = new Scenes.BaseScene('buy_chips');
+export const finalCount = new Scenes.BaseScene('final_count');
 
-buyChips.enter(async (ctx) => {
+finalCount.enter(async (ctx) => {
     try {
         const fromId = ctx.from.id;
         const isAdmin = await isUserAdminInGroup(ctx.telegram, config.groupId, fromId);
@@ -42,13 +42,13 @@ buyChips.enter(async (ctx) => {
         const eventButtons = events.map(event => {
             return [{
                 text: event.name,
-                callback_data: `buy_chips_event_${event.id}`
+                callback_data: `final_count_event_${event.id}`
             }];
         });
 
         eventButtons.push([{
             text: '❌ Скасувати',
-            callback_data: 'buy_chips_cancel'
+            callback_data: 'final_count_cancel'
         }]);
 
         await ctx.reply('📅 Оберіть подію:', {
@@ -57,7 +57,7 @@ buyChips.enter(async (ctx) => {
             }
         });
     } catch (err) {
-        logError('❌ Error in buyChips.enter', err);
+        logError('❌ Error in finalCount.enter', err);
         await ctx.reply('❌ Сталася помилка. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
@@ -93,7 +93,7 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
 
             return {
                 text: displayName,
-                callback_data: `buy_chips_player_${event.id}_${reg.userId}_${reg.id}`
+                callback_data: `final_count_player_${event.id}_${reg.userId}_${reg.id}`
             };
         }).filter(btn => btn !== null);
         
@@ -108,25 +108,25 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
             paginationButtons.push([
                 {
                     text: '◀️ Попередня',
-                    callback_data: `buy_chips_page_${event.id}_${page - 1}`
+                    callback_data: `final_count_page_${event.id}_${page - 1}`
                 },
                 {
                     text: 'Наступна ▶️',
-                    callback_data: `buy_chips_page_${event.id}_${page + 1}`
+                    callback_data: `final_count_page_${event.id}_${page + 1}`
                 }
             ]);
         } else if (page > 0) {
             paginationButtons.push([
                 {
                     text: '◀️ Попередня',
-                    callback_data: `buy_chips_page_${event.id}_${page - 1}`
+                    callback_data: `final_count_page_${event.id}_${page - 1}`
                 }
             ]);
         } else if (page < totalPages - 1) {
             paginationButtons.push([
                 {
                     text: 'Наступна ▶️',
-                    callback_data: `buy_chips_page_${event.id}_${page + 1}`
+                    callback_data: `final_count_page_${event.id}_${page + 1}`
                 }
             ]);
         }
@@ -135,11 +135,11 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
     const navButtons = [
         {
             text: '⬅️ Назад',
-            callback_data: 'buy_chips_back_to_events'
+            callback_data: 'final_count_back_to_events'
         },
         {
             text: '❌ Скасувати',
-            callback_data: 'buy_chips_cancel'
+            callback_data: 'final_count_cancel'
         }
     ];
 
@@ -155,7 +155,7 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
     });
 };
 
-buyChips.action(/^buy_chips_event_(\d+)$/, async (ctx) => {
+finalCount.action(/^final_count_event_(\d+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
         
@@ -199,13 +199,13 @@ buyChips.action(/^buy_chips_event_(\d+)$/, async (ctx) => {
 
         await renderPlayersPage(ctx, event, registrations, usersMap, 0);
     } catch (err) {
-        logError('❌ Error in buyChips event selection', err);
+        logError('❌ Error in finalCount event selection', err);
         await ctx.reply('❌ Сталася помилка. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });
 
-buyChips.action(/^buy_chips_page_(\d+)_(\d+)$/, async (ctx) => {
+finalCount.action(/^final_count_page_(\d+)_(\d+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
         
@@ -221,13 +221,13 @@ buyChips.action(/^buy_chips_page_(\d+)_(\d+)$/, async (ctx) => {
 
         await renderPlayersPage(ctx, event, registrations, usersMap, page);
     } catch (err) {
-        logError('❌ Error in buyChips pagination', err);
+        logError('❌ Error in finalCount pagination', err);
         await ctx.reply('❌ Сталася помилка. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });
 
-buyChips.action('buy_chips_back_to_events', async (ctx) => {
+finalCount.action('final_count_back_to_events', async (ctx) => {
     try {
         await ctx.answerCbQuery();
         
@@ -257,13 +257,13 @@ buyChips.action('buy_chips_back_to_events', async (ctx) => {
         const eventButtons = events.map(event => {
             return [{
                 text: event.name,
-                callback_data: `buy_chips_event_${event.id}`
+                callback_data: `final_count_event_${event.id}`
             }];
         });
 
         eventButtons.push([{
             text: '❌ Скасувати',
-            callback_data: 'buy_chips_cancel'
+            callback_data: 'final_count_cancel'
         }]);
 
         await ctx.editMessageText('📅 Оберіть подію:', {
@@ -281,7 +281,7 @@ buyChips.action('buy_chips_back_to_events', async (ctx) => {
     }
 });
 
-buyChips.action(/^buy_chips_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
+finalCount.action(/^final_count_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
     try {
         await ctx.answerCbQuery();
         
@@ -301,52 +301,43 @@ buyChips.action(/^buy_chips_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
         ctx.scene.state.user = user;
         ctx.scene.state.regId = regId;
 
-        // Check if this is a friend registration
-        const registration = await RegistrationLog.findByPk(regId);
         const userName = formatUsername(user);
-        
-        let displayName;
-        if (registration && registration.type === 'friend') {
-            displayName = `➕ від ${userName} (ID ${regId})`;
-        } else {
-            displayName = userName;
-        }
 
         await ctx.editMessageText(
-            `💵 Введіть кількість фішок для ${displayName}:`,
+            `💵 Введіть фінальну кількість фішок для гравця ${userName}:`,
             { reply_markup: { inline_keyboard: [] } }
         );
     } catch (err) {
-        logError('❌ Error in buyChips player selection', err);
+        logError('❌ Error in finalCount player selection', err);
         await ctx.reply('❌ Сталася помилка. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });
 
-buyChips.action('buy_chips_cancel', async (ctx) => {
+finalCount.action('final_count_cancel', async (ctx) => {
     try {
         await ctx.answerCbQuery();
-        await ctx.editMessageText('❌ Купівлю фішок скасовано.', {
+        await ctx.editMessageText('❌ Введення фінального результату скасовано.', {
             reply_markup: { inline_keyboard: [] }
         });
         return await ctx.scene.leave();
     } catch (err) {
-        logError('❌ Error canceling buy chips', err);
+        logError('❌ Error canceling final count', err);
         return await ctx.scene.leave();
     }
 });
 
-buyChips.hears(/\/buy_chips_cancel/, async (ctx) => {
-    await ctx.reply('❌ Купівлю фішок скасовано.');
+finalCount.hears(/\/final_count_cancel/, async (ctx) => {
+    await ctx.reply('❌ Введення фінального результату скасовано.');
     return await ctx.scene.leave();
 });
 
-buyChips.on('text', async (ctx) => {
+finalCount.on('text', async (ctx) => {
     try {
         const input = ctx.message.text.trim();
 
-        if (input === '/buy_chips_cancel' || input === 'buy_chips_cancel') {
-            await ctx.reply('❌ Купівлю фішок скасовано.');
+        if (input === '/final_count_cancel' || input === 'final_count_cancel') {
+            await ctx.reply('❌ Введення фінального результату скасовано.');
             return await ctx.scene.leave();
         }
 
@@ -368,24 +359,16 @@ buyChips.on('text', async (ctx) => {
             regId: regId,
             amount: amount,
             confirmed: false,
-            is_final: false
+            is_final: true
         });
 
-        const registration = await RegistrationLog.findByPk(regId);
         const userName = formatUsername(user);
-        
-        let displayName;
-        if (registration && registration.type === 'friend') {
-            displayName = `➕ від ${userName} (ID ${regId})`;
-        } else {
-            displayName = userName;
-        }
-
-        await ctx.reply(`✅ Запис про покупку ${amount} фішок для ${displayName} створено.`);
+        await ctx.reply(`✅ Фінальний результат ${amount} фішок для ${userName} збережено.`);
         return await ctx.scene.leave();
     } catch (err) {
-        logError('❌ Error in buyChips text handler', err);
+        logError('❌ Error in finalCount text handler', err);
         await ctx.reply('❌ Сталася помилка при збереженні. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });
+
