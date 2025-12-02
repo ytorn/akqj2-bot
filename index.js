@@ -25,6 +25,7 @@ import {toggleEventStatus} from "./actions/toggleEventStatus.js";
 import {deleteEventDraft} from "./actions/deleteEventDraft.js";
 import {schedulePublish} from "./actions/schedulePublish.js";
 import {schedulePost} from "./cronJobs/schedulePost.js";
+import {requestChips} from "./scenes/requestChips.js";
 
 dayjs.extend(utc)
 
@@ -45,7 +46,7 @@ app.use("/admin", auth);
 const db = new Database("eventbot.sqlite");
 const bot = new Telegraf(config.botToken);
 
-const stage = new Scenes.Stage([createEventWizard, schedulePublishScene, buyChips, finalCount]);
+const stage = new Scenes.Stage([createEventWizard, schedulePublishScene, buyChips, requestChips, finalCount]);
 
 bot.use(session());
 bot.use(stage.middleware());
@@ -130,6 +131,17 @@ bot.command('buy_chips', async (ctx) => {
 bot.command('buy_chips_cancel', async (ctx) => {
     if (ctx.scene && ctx.scene.current && ctx.scene.current.id === 'buy_chips') {
         await ctx.reply('❌ Купівлю фішок скасовано.');
+        return await ctx.scene.leave();
+    }
+});
+
+bot.command('request_chips', async (ctx) => {
+    return ctx.scene.enter('request_chips')
+});
+
+bot.command('request_chips_cancel', async (ctx) => {
+    if (ctx.scene && ctx.scene.current && ctx.scene.current.id === 'request_chips') {
+        await ctx.reply('❌ Запит на покупку фішок скасовано.');
         return await ctx.scene.leave();
     }
 });

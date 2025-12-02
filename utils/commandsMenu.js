@@ -17,6 +17,7 @@ export const updateUserCommands = async (userId, chatId, telegram) => {
         commands.push({ command: 'final_count_cancel', description: 'Перервати введення результатів' });
     }
 
+    commands.push({ command: 'request_chips', description: 'Записати покупку фішок' });
     commands.push({ command: 'settings', description: 'Налаштування' });
     commands.push({ command: 'help', description: 'Інформація та підтримка' });
 
