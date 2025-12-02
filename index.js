@@ -8,7 +8,7 @@ import utc from "dayjs/plugin/utc.js";
 import Database from "better-sqlite3";
 import fs from 'fs';
 import path from 'path';
-import {User, Group, Event, RegistrationLog} from './db.js';
+import {User, Group} from './db.js';
 import {logError} from "./utils/logError.js";
 import config from "./config.js";
 import {voteForEvent} from "./actions/voteForEvent.js";
@@ -24,6 +24,8 @@ import {publishEvent} from "./actions/publishEvent.js";
 import {toggleEventStatus} from "./actions/toggleEventStatus.js";
 import {deleteEventDraft} from "./actions/deleteEventDraft.js";
 import {schedulePublish} from "./actions/schedulePublish.js";
+import {confirmChipRequest} from "./actions/confirmChipRequest.js";
+import {declineChipRequest} from "./actions/declineChipRequest.js";
 import {schedulePost} from "./cronJobs/schedulePost.js";
 import {requestChips} from "./scenes/requestChips.js";
 
@@ -122,6 +124,18 @@ bot.action(/event_delete_(\d+)/, async (ctx) => {
 
 bot.action(/event_schedule_(\w+)_(\d+)/, async (ctx) => {
     await schedulePublish()(ctx);
+});
+
+bot.action(/^chips_confirm_(\d+)$/, async (ctx) => {
+    await confirmChipRequest()(ctx);
+});
+
+bot.action(/^chips_decline_(\d+)$/, async (ctx) => {
+    await declineChipRequest()(ctx);
+});
+
+bot.action(/^chips_already_(confirmed|declined)$/, async (ctx) => {
+    await ctx.answerCbQuery();
 });
 
 bot.command('buy_chips', async (ctx) => {

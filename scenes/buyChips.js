@@ -367,7 +367,7 @@ buyChips.on('text', async (ctx) => {
             eventId: event.id,
             regId: regId,
             amount: amount,
-            confirmed: false,
+            confirmed: true,
             is_final: false
         });
 

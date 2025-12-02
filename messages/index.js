@@ -42,3 +42,12 @@ export const eventsNotFound = `❌ Не вдалося знайти події.
 
 export const noOngoingEvents = `❌ У тебе немає активних подій в поточний момент.
 `
+
+export const chipRequestNotification = (clickableUsername, amount) => 
+    `Гравець ${clickableUsername} зробив заявку на покупку ${amount} фішок`
+
+export const chipRequestConfirmed = (amount) => 
+    `✅ Вашу заявку на покупку ${amount} фішок підтверджено.`
+
+export const chipRequestDeclined = (amount) => 
+    `❌ Вашу заявку на покупку ${amount} фішок відхилено.`

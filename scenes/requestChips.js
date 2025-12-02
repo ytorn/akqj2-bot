@@ -4,6 +4,10 @@ import dayjs from "dayjs";
 import {logError} from "../utils/logError.js";
 import {Scenes} from "telegraf";
 import {notifyAdmins} from "../utils/notifyAdmins.js";
+import {isUserAdminInGroup} from "../utils/isUserAdminInGroup.js";
+import {getClickableName} from "../utils/getClickableName.js";
+import config from "../config.js";
+import {chipRequestNotification} from "../messages/index.js";
 
 export const requestChips = new Scenes.BaseScene('request_chips');
 
@@ -57,7 +61,6 @@ requestChips.enter(async (ctx) => {
 requestChips.action(/^request_chips_event_(\d+)$/, async (ctx) => {
     try {
         const fromId = ctx.from.id;
-        console.log(fromId)
 
         await ctx.answerCbQuery();
 
@@ -145,20 +148,52 @@ requestChips.on('text', async (ctx) => {
             return await ctx.reply('❌ Неправильний формат. Введіть додатне ціле число');
         }
 
-        await ChipsLog.create({
+        const fromId = ctx.from.id;
+        const isAdmin = await isUserAdminInGroup(ctx.telegram, config.groupId, fromId);
+        const confirmed = isAdmin;
+
+        const chipsLog = await ChipsLog.create({
             userId: user.id,
             eventId: event.id,
-            regId: regId,
-            amount: amount,
-            confirmed: false,
+            regId,
+            amount,
+            confirmed,
             is_final: false
         });
 
-        await ctx.reply(`✅ Заявка на покупку ${amount} фішок створена.`);
+        if (isAdmin) {
+            await ctx.reply(`✅ Заявка на покупку ${amount} фішок створена та автоматично підтверджена.`);
+        } else {
+            const clickableUsername = getClickableName(user);
+            const message = chipRequestNotification(clickableUsername, amount);
+            
+            const buttons = [
+                [
+                    {
+                        text: 'Підтвердити',
+                        callback_data: `chips_confirm_${chipsLog.id}`
+                    },
+                    {
+                        text: 'Відхилити',
+                        callback_data: `chips_decline_${chipsLog.id}`
+                    }
+                ]
+            ];
+
+            await notifyAdmins(message, {
+                reply_markup: {
+                    inline_keyboard: buttons
+                },
+                parse_mode: 'HTML'
+            });
+
+            await ctx.reply(`✅ Заявка на покупку ${amount} фішок створена.`);
+        }
+        
         return await ctx.scene.leave();
     } catch (err) {
-        logError('❌ Error in buyChips text handler', err);
-        await ctx.reply('❌ Сталася помилка при збереженні. Спробуйте пізніше.');
+        logError('❌ Error in requestChips text handler', err);
+        await ctx.reply('❌ Сталася помилка при запиті на покупку фішок. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });

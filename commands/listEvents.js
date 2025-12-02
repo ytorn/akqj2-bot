@@ -42,7 +42,8 @@ export const listEvents = async (ctx) => {
         const purchaseLogs = await ChipsLog.findAll({
             where: {
                 eventId: event.id,
-                is_final: false
+                is_final: false,
+                confirmed: true
             },
             order: [['createdAt', 'ASC']]
         });
