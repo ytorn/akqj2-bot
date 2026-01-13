@@ -12,7 +12,7 @@ export function eventButtons(eventId, isClosed) {
         [
             { text: '➕ Плюс друга', callback_data: `vote_friend_${eventId}` },
             { text: '➖ Мінус', callback_data: `vote_remove_${eventId}` },
-            { text: '🤖 Бот', url: 'https://t.me/a_k_q_j_2_bot' }
+            { text: '🤖 Бот', url: 'https://t.me/akqj2_bot' }
         ]
     ];
 
