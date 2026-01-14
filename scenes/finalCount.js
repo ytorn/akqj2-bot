@@ -349,8 +349,8 @@ finalCount.on('text', async (ctx) => {
 
         const amount = Number(input);
 
-        if (isNaN(amount) || amount <= 0 || !Number.isInteger(amount)) {
-            return await ctx.reply('❌ Неправильний формат. Введіть додатне ціле число');
+        if (isNaN(amount) || amount < 0 || !Number.isInteger(amount)) {
+            return await ctx.reply('❌ Неправильний формат. Введіть ціле число, що дорівнює або більше нуля');
         }
 
         await ChipsLog.create({
