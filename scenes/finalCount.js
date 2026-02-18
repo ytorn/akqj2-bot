@@ -19,15 +19,15 @@ finalCount.enter(async (ctx) => {
         }
 
         const now = dayjs.utc().toDate();
-        const twelveHours = 12 * 60 * 60 * 1000;
+        const twentyFourHours = 24 * 60 * 60 * 1000;
 
         const events = await Event.findAll({
             where: {
                 is_draft: false,
                 time: {
                     [Op.between]: [
-                        new Date(now.getTime() - twelveHours),
-                        new Date(now.getTime() + twelveHours)
+                        new Date(now.getTime() - twentyFourHours),
+                        new Date(now.getTime() + twentyFourHours)
                     ]
                 }
             },
@@ -232,15 +232,15 @@ finalCount.action('final_count_back_to_events', async (ctx) => {
         await ctx.answerCbQuery();
         
         const now = dayjs.utc().toDate();
-        const twelveHours = 12 * 60 * 60 * 1000;
+        const twentyFourHours = 24 * 60 * 60 * 1000;
 
         const events = await Event.findAll({
             where: {
                 is_draft: false,
                 time: {
                     [Op.between]: [
-                        new Date(now.getTime() - twelveHours),
-                        new Date(now.getTime() + twelveHours)
+                        new Date(now.getTime() - twentyFourHours),
+                        new Date(now.getTime() + twentyFourHours)
                     ]
                 }
             },
