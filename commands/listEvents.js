@@ -16,8 +16,8 @@ export const listEvents = async (ctx) => {
     if (!isAdmin) return ctx.reply('⛔ Admins only');
 
     const now = dayjs.utc().toDate();
-    const twelveHours = 12 * 60 * 60 * 1000;
-    const twelveHoursAgo = new Date(now.getTime() - twelveHours);
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    const twentyFourHoursAgo = new Date(now.getTime() - twentyFourHours);
 
     const events = await Event.findAll({
         where: {
@@ -26,7 +26,7 @@ export const listEvents = async (ctx) => {
                 {
                     is_draft: false,
                     time: { 
-                        [Op.gt]: twelveHoursAgo
+                        [Op.gt]: twentyFourHoursAgo
                     }
                 }
             ]
