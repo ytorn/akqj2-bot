@@ -36,6 +36,7 @@ export const Event = sequelize.define('event', {
     image_url: { type: DataTypes.STRING, allowNull: true },
     is_closed: { type: DataTypes.BOOLEAN, defaultValue: false },
     dealer_id: DataTypes.INTEGER,
+    dealer_tips: { type: DataTypes.INTEGER, allowNull: true },
 });
 
 export const RegistrationLog = sequelize.define('registration_log', {

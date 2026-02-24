@@ -71,8 +71,16 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
     const pageRegistrations = registrations.slice(startIndex, endIndex);
 
     const playerButtons = [];
+
+    const dealerLabel = event.dealer_tips != null
+        ? `🃏 Дилер (чайові): ${event.dealer_tips}`
+        : '🃏 Дилер (чайові)';
+    playerButtons.push([{
+        text: dealerLabel,
+        callback_data: `final_count_dealer_${event.id}`
+    }]);
+
     const buttonsPerRow = 2;
-    
     for (let i = 0; i < pageRegistrations.length; i += buttonsPerRow) {
         const row = pageRegistrations.slice(i, i + buttonsPerRow).map(reg => {
             const user = usersMap[reg.userId];
@@ -176,18 +184,10 @@ finalCount.action(/^final_count_event_(\d+)$/, async (ctx) => {
             order: [['join_time', 'ASC']]
         });
 
-        if (!registrations || registrations.length === 0) {
-            await ctx.reply('❌ Не знайдено активних гравців для цієї події.');
-            return await ctx.scene.leave();
-        }
-
         const userIds = [...new Set(registrations.map(reg => reg.userId))];
-        const users = await User.findAll({
-            where: {
-                id: { [Op.in]: userIds }
-            }
-        });
-
+        const users = userIds.length > 0
+            ? await User.findAll({ where: { id: { [Op.in]: userIds } } })
+            : [];
         const usersMap = {};
         for (const user of users) {
             usersMap[user.id] = user;
@@ -273,10 +273,39 @@ finalCount.action('final_count_back_to_events', async (ctx) => {
         });
 
         ctx.scene.state.event = null;
+        ctx.scene.state.registrations = null;
+        ctx.scene.state.usersMap = null;
         ctx.scene.state.user = null;
         ctx.scene.state.regId = null;
+        ctx.scene.state.dealerTipsMode = false;
     } catch (err) {
         logError('❌ Error going back to events', err);
+        return await ctx.scene.leave();
+    }
+});
+
+finalCount.action(/^final_count_dealer_(\d+)$/, async (ctx) => {
+    try {
+        await ctx.answerCbQuery();
+
+        const eventId = parseInt(ctx.match[1]);
+        const event = await Event.findByPk(eventId);
+
+        if (!event) {
+            await ctx.reply('❌ Подію не знайдено.');
+            return await ctx.scene.leave();
+        }
+
+        ctx.scene.state.event = event;
+        ctx.scene.state.dealerTipsMode = true;
+
+        await ctx.editMessageText(
+            '💵 Введіть суму чайових для дилера:',
+            { reply_markup: { inline_keyboard: [] } }
+        );
+    } catch (err) {
+        logError('❌ Error in finalCount dealer tips', err);
+        await ctx.reply('❌ Сталася помилка. Спробуйте пізніше.');
         return await ctx.scene.leave();
     }
 });
@@ -300,6 +329,7 @@ finalCount.action(/^final_count_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
         ctx.scene.state.event = event;
         ctx.scene.state.user = user;
         ctx.scene.state.regId = regId;
+        ctx.scene.state.dealerTipsMode = false;
 
         const userName = formatUsername(user);
 
@@ -341,9 +371,10 @@ finalCount.on('text', async (ctx) => {
             return await ctx.scene.leave();
         }
 
-        const { event, user, regId } = ctx.scene.state;
-        if (!event || !user || !regId) {
-            await ctx.reply('❌ Будь ласка, спочатку оберіть подію та гравця через кнопки.');
+        const { event, user, regId, dealerTipsMode } = ctx.scene.state;
+
+        if (!event) {
+            await ctx.reply('❌ Будь ласка, спочатку оберіть подію через кнопки.');
             return;
         }
 
@@ -351,6 +382,18 @@ finalCount.on('text', async (ctx) => {
 
         if (isNaN(amount) || amount < 0 || !Number.isInteger(amount)) {
             return await ctx.reply('❌ Неправильний формат. Введіть ціле число, що дорівнює або більше нуля');
+        }
+
+        if (dealerTipsMode) {
+            event.dealer_tips = amount;
+            await event.save();
+            await ctx.reply(`✅ Чайові дилера: ${amount} збережено.`);
+            return await ctx.scene.leave();
+        }
+
+        if (!user || !regId) {
+            await ctx.reply('❌ Будь ласка, оберіть гравця через кнопки.');
+            return;
         }
 
         await ChipsLog.create({
