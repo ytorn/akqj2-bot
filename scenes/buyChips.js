@@ -170,7 +170,7 @@ buyChips.action(/^buy_chips_event_(\d+)$/, async (ctx) => {
         const registrations = await RegistrationLog.findAll({
             where: {
                 eventId: event.id,
-                is_waiting: false,
+                // is_waiting: false,
                 type: { [Op.in]: ['join', 'friend'] }
             },
             order: [['join_time', 'ASC']]

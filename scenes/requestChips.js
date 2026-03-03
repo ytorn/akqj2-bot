@@ -83,7 +83,7 @@ requestChips.action(/^request_chips_event_(\d+)$/, async (ctx) => {
             where: {
                 eventId: event.id,
                 user_id: user.id,
-                is_waiting: false,
+                // is_waiting: false,
                 type: { [Op.in]: ['join', 'friend'] }
             }
         });
