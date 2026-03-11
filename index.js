@@ -166,7 +166,18 @@ bot.command('final_count', async (ctx) => {
 
 bot.catch(async (err, ctx) => {
     logError('❌ Global bot error:', err);
-    await ctx.answerCbQuery('Сталася невідома помилка')
+
+    try {
+        // Only answer callback queries when available
+        if (ctx && typeof ctx.answerCbQuery === 'function' && ctx.callbackQuery) {
+            await ctx.answerCbQuery('Сталася невідома помилка');
+        } else if (ctx && typeof ctx.reply === 'function' && ctx.chat && ctx.chat.type === 'private') {
+            // For regular messages in private chat, send a generic error reply
+            await ctx.reply('❌ Сталася невідома помилка. Спробуйте пізніше.');
+        }
+    } catch (innerErr) {
+        logError('❌ Error while handling global bot error:', innerErr);
+    }
 });
 
 process.on('unhandledRejection', (reason) => {

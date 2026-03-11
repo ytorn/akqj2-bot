@@ -135,12 +135,19 @@ export const listEvents = async (ctx) => {
 
         if (Object.keys(finalByReg).length > 0) {
             chipsInfoText += '\n\n<b>Фінальний результат:</b>\n';
-            chipsInfoText += `🃏 Дилер (чайові): <b>${event.dealer_tips}</b>\n`;
+
+            if (event.dealer_tips != null) {
+                chipsInfoText += `🃏 Дилер (чайові): <b>${event.dealer_tips}</b>\n`;
+            }
 
             for (const regId in finalByReg) {
                 const { user, amount, registration } = finalByReg[regId];
-                const { amounts } = chipsByReg[regId];
-                const initial = amounts.reduce((sum, amount) => sum + amount, 0)
+                
+                const chipsEntry = chipsByReg[regId];
+                const amounts = chipsEntry ? chipsEntry.amounts : [];
+                const initial = amounts.length > 0
+                    ? amounts.reduce((sum, amount) => sum + amount, 0)
+                    : 0;
 
                 let displayName;
                 if (registration && registration.type === 'friend') {
