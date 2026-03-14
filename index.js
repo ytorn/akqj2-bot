@@ -40,10 +40,14 @@ if (!fs.existsSync(logsDir)) {
 const app = express();
 app.use(express.json());
 
+const adminUsers = {};
+if (config.adminApiUser && config.adminApiPassword) {
+    adminUsers[config.adminApiUser] = config.adminApiPassword;
+} else {
+    adminUsers.pokerBotTesting = "AKQJ2_Testing_2025";
+}
 const auth = basicAuth({
-    users: {
-        pokerBotTesting: "AKQJ2_Testing_2025",
-    },
+    users: adminUsers,
     challenge: true,
 });
 app.use("/admin", auth);
