@@ -28,6 +28,7 @@ import {confirmChipRequest} from "./actions/confirmChipRequest.js";
 import {declineChipRequest} from "./actions/declineChipRequest.js";
 import {schedulePost} from "./cronJobs/schedulePost.js";
 import {requestChips} from "./scenes/requestChips.js";
+import {apiRouter} from "./routes/api.js";
 
 dayjs.extend(utc)
 
@@ -37,6 +38,8 @@ if (!fs.existsSync(logsDir)) {
 }
 
 const app = express();
+app.use(express.json());
+
 const auth = basicAuth({
     users: {
         pokerBotTesting: "AKQJ2_Testing_2025",
@@ -44,6 +47,7 @@ const auth = basicAuth({
     challenge: true,
 });
 app.use("/admin", auth);
+app.use("/api", auth, apiRouter);
 
 const db = new Database("eventbot.sqlite");
 const bot = new Telegraf(config.botToken);

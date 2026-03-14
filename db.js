@@ -100,6 +100,18 @@ export const MessageEdit = sequelize.define('message_edit', {
 Group.hasMany(Event);
 Event.belongsTo(Group);
 
+User.hasMany(RegistrationLog, { foreignKey: 'userId' });
+RegistrationLog.belongsTo(User, { foreignKey: 'userId' });
+Event.hasMany(RegistrationLog, { foreignKey: 'eventId' });
+RegistrationLog.belongsTo(Event, { foreignKey: 'eventId' });
+
+User.hasMany(ChipsLog, { foreignKey: 'userId' });
+ChipsLog.belongsTo(User, { foreignKey: 'userId' });
+Event.hasMany(ChipsLog, { foreignKey: 'eventId' });
+ChipsLog.belongsTo(Event, { foreignKey: 'eventId' });
+RegistrationLog.hasMany(ChipsLog, { foreignKey: 'regId' });
+ChipsLog.belongsTo(RegistrationLog, { foreignKey: 'regId' });
+
 Message.hasMany(MessageEdit, { foreignKey: 'message_db_id' });
 MessageEdit.belongsTo(Message, { foreignKey: 'message_db_id' });
 
