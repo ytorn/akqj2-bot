@@ -27,14 +27,44 @@ const toSafeInt = (value) => {
     return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-/** GET /api/users - list all users */
+const DEFAULT_PAGE_LIMIT = 20;
+const MAX_PAGE_LIMIT = 100;
+
+const parsePagination = (query) => {
+    let page = parseInt(query.page, 10);
+    if (Number.isNaN(page) || page < 1) page = 1;
+
+    let limit = parseInt(query.limit, 10);
+    if (Number.isNaN(limit) || limit < 1) limit = DEFAULT_PAGE_LIMIT;
+    if (limit > MAX_PAGE_LIMIT) limit = MAX_PAGE_LIMIT;
+
+    const offset = (page - 1) * limit;
+    return { page, limit, offset };
+};
+
+/** GET /api/users - list users (paginated: ?page=1&limit=20) */
 apiRouter.get('/users', async (req, res) => {
     try {
+        const { page, limit, offset } = parsePagination(req.query);
+        const total = await User.count();
         const users = await User.findAll({
             order: [['id', 'ASC']],
+            limit,
+            offset,
         });
         const data = users.map((u) => u.get({ plain: true }));
-        res.json({ users: data });
+        const totalPages = Math.ceil(total / limit) || 1;
+        res.json({
+            users: data,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1,
+            },
+        });
     } catch (err) {
         logError('API GET /users error', err);
         res.status(500).json({ error: 'Failed to fetch users' });
@@ -112,15 +142,30 @@ apiRouter.get('/users/:id', async (req, res) => {
     }
 });
 
-/** GET /api/events - list all events */
+/** GET /api/events - list events (paginated: ?page=1&limit=20) */
 apiRouter.get('/events', async (req, res) => {
     try {
+        const { page, limit, offset } = parsePagination(req.query);
+        const total = await Event.count();
         const events = await Event.findAll({
             order: [['time', 'DESC']],
             include: [{ model: Group, attributes: ['id', 'title', 'telegram_chat_id'] }],
+            limit,
+            offset,
         });
         const data = events.map((e) => e.get({ plain: true }));
-        res.json({ events: data });
+        const totalPages = Math.ceil(total / limit) || 1;
+        res.json({
+            events: data,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages,
+                hasNext: page < totalPages,
+                hasPrev: page > 1,
+            },
+        });
     } catch (err) {
         logError('API GET /events error', err);
         res.status(500).json({ error: 'Failed to fetch events' });
