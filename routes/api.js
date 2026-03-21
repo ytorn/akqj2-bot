@@ -36,24 +36,6 @@ apiRouter.get('/users', async (req, res) => {
     }
 });
 
-/** GET /api/users/:id - get user by id */
-apiRouter.get('/users/:id', async (req, res) => {
-    try {
-        const id = parseInt(req.params.id, 10);
-        if (Number.isNaN(id)) {
-            return res.status(400).json({ error: 'Invalid user id' });
-        }
-        const user = await User.findByPk(id);
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-        res.json(user.get({ plain: true }));
-    } catch (err) {
-        logError('API GET /users/:id error', err);
-        res.status(500).json({ error: 'Failed to fetch user' });
-    }
-});
-
 /** GET /api/users/search?q=... - search users by name/tg id/username/@username */
 apiRouter.get('/users/search', async (req, res) => {
     try {
@@ -104,6 +86,24 @@ apiRouter.get('/users/search', async (req, res) => {
     } catch (err) {
         logError('API GET /users/search error', err);
         return res.status(500).json({ error: 'Failed to search users' });
+    }
+});
+
+/** GET /api/users/:id - get user by id */
+apiRouter.get('/users/:id', async (req, res) => {
+    try {
+        const id = parseInt(req.params.id, 10);
+        if (Number.isNaN(id)) {
+            return res.status(400).json({ error: 'Invalid user id' });
+        }
+        const user = await User.findByPk(id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        res.json(user.get({ plain: true }));
+    } catch (err) {
+        logError('API GET /users/:id error', err);
+        res.status(500).json({ error: 'Failed to fetch user' });
     }
 });
 
