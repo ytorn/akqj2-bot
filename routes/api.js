@@ -22,6 +22,11 @@ const parsePlayerIds = (playerIds) => {
     return ids;
 };
 
+const toSafeInt = (value) => {
+    const parsed = parseInt(value ?? 0, 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+};
+
 /** GET /api/users - list all users */
 apiRouter.get('/users', async (req, res) => {
     try {
@@ -162,6 +167,159 @@ apiRouter.get('/events/:id', async (req, res) => {
     } catch (err) {
         logError('API GET /events/:id error', err);
         res.status(500).json({ error: 'Failed to fetch event' });
+    }
+});
+
+/** GET /api/dashboard/stats - aggregated counters for admin dashboard */
+apiRouter.get('/dashboard/stats', async (req, res) => {
+    try {
+        const [totalEvents, totalUsers, biggestDealerTipsEvent] = await Promise.all([
+            Event.count({ where: { is_draft: false } }),
+            User.count(),
+            Event.findOne({
+                where: { dealer_tips: { [Op.not]: null } },
+                order: [['dealer_tips', 'DESC'], ['time', 'DESC']],
+            }),
+        ]);
+
+        const boughtByReg = await ChipsLog.findAll({
+            where: { is_final: false, confirmed: true },
+            attributes: [
+                'regId',
+                'userId',
+                'eventId',
+                [sequelize.fn('SUM', sequelize.col('amount')), 'totalBought'],
+            ],
+            group: ['regId', 'userId', 'eventId'],
+            order: [[sequelize.literal('totalBought'), 'DESC']],
+            raw: true,
+        });
+
+        const finalByReg = await ChipsLog.findAll({
+            where: { is_final: true },
+            attributes: [
+                'regId',
+                'userId',
+                'eventId',
+                [sequelize.fn('MAX', sequelize.col('amount')), 'finalAmount'],
+            ],
+            group: ['regId', 'userId', 'eventId'],
+            order: [[sequelize.literal('finalAmount'), 'DESC']],
+            raw: true,
+        });
+
+        const topBought = boughtByReg.length > 0 ? boughtByReg[0] : null;
+        const topFinal = finalByReg.length > 0 ? finalByReg[0] : null;
+
+        const boughtMap = new Map();
+        for (const row of boughtByReg) {
+            boughtMap.set(row.regId, toSafeInt(row.totalBought));
+        }
+
+        let topWin = null;
+        for (const row of finalByReg) {
+            const finalAmount = toSafeInt(row.finalAmount);
+            const totalBoughtForReg = boughtMap.get(row.regId) ?? 0;
+            const winAmount = finalAmount - totalBoughtForReg;
+            if (!topWin || winAmount > topWin.winAmount) {
+                topWin = {
+                    regId: row.regId,
+                    userId: row.userId,
+                    eventId: row.eventId,
+                    finalAmount,
+                    totalBought: totalBoughtForReg,
+                    winAmount,
+                };
+            }
+        }
+
+        const targetUserIds = [...new Set([
+            topBought?.userId,
+            topFinal?.userId,
+            topWin?.userId,
+        ].filter(Boolean))];
+        const targetEventIds = [...new Set([
+            topBought?.eventId,
+            topFinal?.eventId,
+            topWin?.eventId,
+            biggestDealerTipsEvent?.id,
+        ].filter(Boolean))];
+
+        const [users, events] = await Promise.all([
+            targetUserIds.length > 0
+                ? User.findAll({ where: { id: targetUserIds }, attributes: ['id', 'first_name', 'last_name', 'username', 'user_id'] })
+                : [],
+            targetEventIds.length > 0
+                ? Event.findAll({ where: { id: targetEventIds }, attributes: ['id', 'name', 'time'] })
+                : [],
+        ]);
+
+        const usersMap = new Map(users.map((u) => [u.id, u.get({ plain: true })]));
+        const eventsMap = new Map(events.map((e) => [e.id, e.get({ plain: true })]));
+
+        const formatUser = (userId) => {
+            const user = usersMap.get(userId);
+            if (!user) return null;
+            return {
+                id: user.id,
+                firstName: user.first_name,
+                lastName: user.last_name,
+                username: user.username,
+                tgId: user.user_id,
+            };
+        };
+
+        const formatEvent = (eventId) => {
+            const event = eventsMap.get(eventId);
+            if (!event) return null;
+            return {
+                id: event.id,
+                name: event.name,
+                date: event.time,
+            };
+        };
+
+        return res.json({
+            totalEvents,
+            totalUsers,
+            biggestDealerTips: biggestDealerTipsEvent
+                ? {
+                    amount: toSafeInt(biggestDealerTipsEvent.dealer_tips),
+                    event: {
+                        id: biggestDealerTipsEvent.id,
+                        name: biggestDealerTipsEvent.name,
+                        date: biggestDealerTipsEvent.time,
+                    },
+                }
+                : null,
+            mostChipsBought: topBought
+                ? {
+                    amount: toSafeInt(topBought.totalBought),
+                    player: formatUser(topBought.userId),
+                    event: formatEvent(topBought.eventId),
+                }
+                : null,
+            biggestFinalCount: topFinal
+                ? {
+                    amount: toSafeInt(topFinal.finalAmount),
+                    player: formatUser(topFinal.userId),
+                    event: formatEvent(topFinal.eventId),
+                }
+                : null,
+            biggestWin: topWin
+                ? {
+                    amount: topWin.winAmount,
+                    player: formatUser(topWin.userId),
+                    event: formatEvent(topWin.eventId),
+                    finalCount: topWin.finalAmount,
+                    totalBought: topWin.totalBought,
+                }
+                : null,
+            generatedAt: new Date().toISOString(),
+        });
+    } catch (err) {
+        logError('API GET /dashboard/stats error', err);
+        return res.status(500).json({ error: 'Failed to fetch dashboard stats' });
     }
 });
 
