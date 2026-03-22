@@ -1,7 +1,7 @@
-import { Router } from 'express';
-import { User, Event, RegistrationLog, ChipsLog, Group, sequelize } from '../db.js';
-import { Op } from 'sequelize';
-import { logError } from '../utils/logError.js';
+import {Router} from 'express';
+import {ChipsLog, Event, Group, RegistrationLog, sequelize, User} from '../db.js';
+import {Op} from 'sequelize';
+import {logError} from '../utils/logError.js';
 
 export const apiRouter = Router();
 
@@ -18,8 +18,7 @@ const normalizeOptionalInt = (value) => {
 
 const parsePlayerIds = (playerIds) => {
     if (!Array.isArray(playerIds)) return null;
-    const ids = [...new Set(playerIds.map((v) => parseInt(v, 10)).filter((v) => !Number.isNaN(v)))];
-    return ids;
+    return [...new Set(playerIds.map((v) => parseInt(v, 10)).filter((v) => !Number.isNaN(v)))];
 };
 
 const toSafeInt = (value) => {
@@ -124,7 +123,7 @@ apiRouter.get('/users/search', async (req, res) => {
     }
 });
 
-/** GET /api/users/:id - get user by id */
+/** GET /api/users/:id - get user by id (includes chip stats) */
 apiRouter.get('/users/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id, 10);
@@ -135,7 +134,103 @@ apiRouter.get('/users/:id', async (req, res) => {
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json(user.get({ plain: true }));
+
+        const [buyinTotalRow, buyinsByReg, finalsByReg] = await Promise.all([
+            ChipsLog.findOne({
+                where: { userId: id, is_final: false, confirmed: true },
+                attributes: [[sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('amount')), 0), 'total']],
+                raw: true,
+            }),
+            ChipsLog.findAll({
+                where: { userId: id, is_final: false, confirmed: true },
+                attributes: [
+                    'regId',
+                    'eventId',
+                    [sequelize.fn('SUM', sequelize.col('amount')), 'totalBought'],
+                ],
+                group: ['regId', 'eventId'],
+                raw: true,
+            }),
+            ChipsLog.findAll({
+                where: { userId: id, is_final: true },
+                attributes: [
+                    'regId',
+                    'eventId',
+                    [sequelize.fn('MAX', sequelize.col('amount')), 'finalAmount'],
+                ],
+                group: ['regId', 'eventId'],
+                raw: true,
+            }),
+        ]);
+
+        const totalBuyin = toSafeInt(buyinTotalRow?.total);
+        const boughtMap = new Map();
+        for (const row of buyinsByReg) {
+            boughtMap.set(row.regId, toSafeInt(row.totalBought));
+        }
+
+        let sumFinalCounts = 0;
+        let bestGame = null;
+        let worstGame = null;
+        const eventIds = [...new Set(finalsByReg.map((r) => r.eventId).filter(Boolean))];
+
+        for (const row of finalsByReg) {
+            const finalAmount = toSafeInt(row.finalAmount);
+            sumFinalCounts += finalAmount;
+            const boughtForReg = boughtMap.get(row.regId) ?? 0;
+            const gameResult = finalAmount - boughtForReg;
+
+            const candidate = {
+                eventId: row.eventId,
+                result: gameResult,
+                eventName: null,
+                date: null,
+            };
+
+            if (!bestGame || gameResult > bestGame.result) {
+                bestGame = { ...candidate };
+            }
+            if (!worstGame || gameResult < worstGame.result) {
+                worstGame = { ...candidate };
+            }
+        }
+
+        if (eventIds.length > 0) {
+            const events = await Event.findAll({
+                where: { id: eventIds },
+                attributes: ['id', 'name', 'time'],
+            });
+            const eventMap = new Map(events.map((e) => [e.id, e.get({ plain: true })]));
+            const fillEvent = (game) => {
+                if (!game) return null;
+                const ev = eventMap.get(game.eventId);
+                return {
+                    eventId: game.eventId,
+                    eventName: ev?.name ?? null,
+                    date: ev?.time ?? null,
+                    result: game.result,
+                };
+            };
+            bestGame = fillEvent(bestGame);
+            worstGame = fillEvent(worstGame);
+        } else {
+            bestGame = null;
+            worstGame = null;
+        }
+
+        const totalResult = sumFinalCounts - totalBuyin;
+        const eventsPlayed = finalsByReg.length;
+
+        res.json({
+            ...user.get({ plain: true }),
+            stats: {
+                eventsPlayed,
+                totalBuyin,
+                totalResult,
+                bestGame,
+                worstGame,
+            },
+        });
     } catch (err) {
         logError('API GET /users/:id error', err);
         res.status(500).json({ error: 'Failed to fetch user' });
