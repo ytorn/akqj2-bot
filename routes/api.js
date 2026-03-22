@@ -135,12 +135,8 @@ apiRouter.get('/users/:id', async (req, res) => {
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const [buyinTotalRow, buyinsByReg, finalsByReg] = await Promise.all([
-            ChipsLog.findOne({
-                where: { userId: id, is_final: false, confirmed: true },
-                attributes: [[sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('amount')), 0), 'total']],
-                raw: true,
-            }),
+        // Totals only include registrations where this user has a final chip log (completed games).
+        const [buyinsByReg, finalsByReg] = await Promise.all([
             ChipsLog.findAll({
                 where: { userId: id, is_final: false, confirmed: true },
                 attributes: [
@@ -163,21 +159,22 @@ apiRouter.get('/users/:id', async (req, res) => {
             }),
         ]);
 
-        const totalBuyin = toSafeInt(buyinTotalRow?.total);
         const boughtMap = new Map();
         for (const row of buyinsByReg) {
             boughtMap.set(row.regId, toSafeInt(row.totalBought));
         }
 
-        let sumFinalCounts = 0;
+        let totalFinalCount = 0;
+        let totalBuyin = 0;
         let bestGame = null;
         let worstGame = null;
         const eventIds = [...new Set(finalsByReg.map((r) => r.eventId).filter(Boolean))];
 
         for (const row of finalsByReg) {
             const finalAmount = toSafeInt(row.finalAmount);
-            sumFinalCounts += finalAmount;
+            totalFinalCount += finalAmount;
             const boughtForReg = boughtMap.get(row.regId) ?? 0;
+            totalBuyin += boughtForReg;
             const gameResult = finalAmount - boughtForReg;
 
             const candidate = {
@@ -218,7 +215,7 @@ apiRouter.get('/users/:id', async (req, res) => {
             worstGame = null;
         }
 
-        const totalResult = sumFinalCounts - totalBuyin;
+        const totalResult = totalFinalCount - totalBuyin;
         const eventsPlayed = finalsByReg.length;
 
         res.json({
@@ -226,6 +223,7 @@ apiRouter.get('/users/:id', async (req, res) => {
             stats: {
                 eventsPlayed,
                 totalBuyin,
+                totalFinalCount,
                 totalResult,
                 bestGame,
                 worstGame,
@@ -313,15 +311,31 @@ apiRouter.get('/events/:id', async (req, res) => {
 /** GET /api/dashboard/stats - aggregated counters for admin dashboard */
 apiRouter.get('/dashboard/stats', async (req, res) => {
     try {
-        const [totalEvents, totalUsers, biggestDealerTipsEvent] = await Promise.all([
+        const [totalEvents, totalUsers, eventIdsWithFinalRows] = await Promise.all([
             Event.count({ where: { is_draft: false } }),
             User.count(),
-            Event.findOne({
-                where: { dealer_tips: { [Op.not]: null } },
-                order: [['dealer_tips', 'DESC'], ['time', 'DESC']],
+            ChipsLog.findAll({
+                where: { is_final: true },
+                attributes: ['eventId'],
+                group: ['eventId'],
+                raw: true,
             }),
         ]);
 
+        const eventIdsWithFinal = [...new Set(eventIdsWithFinalRows.map((r) => r.eventId).filter(Boolean))];
+
+        const biggestDealerTipsEvent = eventIdsWithFinal.length > 0
+            ? await Event.findOne({
+                where: {
+                    id: { [Op.in]: eventIdsWithFinal },
+                    is_draft: false,
+                    dealer_tips: { [Op.not]: null },
+                },
+                order: [['dealer_tips', 'DESC'], ['time', 'DESC']],
+            })
+            : null;
+
+        // Player chip stats only count registrations that have a final chip log ("completed games").
         const boughtByReg = await ChipsLog.findAll({
             where: { is_final: false, confirmed: true },
             attributes: [
@@ -331,7 +345,6 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
                 [sequelize.fn('SUM', sequelize.col('amount')), 'totalBought'],
             ],
             group: ['regId', 'userId', 'eventId'],
-            order: [[sequelize.literal('totalBought'), 'DESC']],
             raw: true,
         });
 
@@ -348,7 +361,15 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
             raw: true,
         });
 
-        const topBought = boughtByReg.length > 0 ? boughtByReg[0] : null;
+        const regIdsWithFinal = new Set(finalByReg.map((r) => r.regId));
+        const boughtByRegCompleted = boughtByReg.filter((r) => regIdsWithFinal.has(r.regId));
+        let topBought = null;
+        if (boughtByRegCompleted.length > 0) {
+            topBought = boughtByRegCompleted.reduce((best, row) =>
+                toSafeInt(row.totalBought) > toSafeInt(best.totalBought) ? row : best
+            );
+        }
+
         const topFinal = finalByReg.length > 0 ? finalByReg[0] : null;
 
         const boughtMap = new Map();
