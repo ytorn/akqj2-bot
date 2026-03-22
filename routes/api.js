@@ -262,6 +262,7 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
         }
 
         let topWin = null;
+        const profitByUser = new Map();
         for (const row of finalByReg) {
             const finalAmount = toSafeInt(row.finalAmount);
             const totalBoughtForReg = boughtMap.get(row.regId) ?? 0;
@@ -276,12 +277,32 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
                     winAmount,
                 };
             }
+            const uid = row.userId;
+            if (!profitByUser.has(uid)) {
+                profitByUser.set(uid, { totalProfit: 0, gamesPlayed: 0 });
+            }
+            const agg = profitByUser.get(uid);
+            agg.totalProfit += winAmount;
+            agg.gamesPlayed += 1;
+        }
+
+        let topWinner = null;
+        let biggestLoser = null;
+        for (const [userId, agg] of profitByUser) {
+            if (!topWinner || agg.totalProfit > topWinner.totalProfit) {
+                topWinner = { userId, totalProfit: agg.totalProfit, gamesPlayed: agg.gamesPlayed };
+            }
+            if (!biggestLoser || agg.totalProfit < biggestLoser.totalProfit) {
+                biggestLoser = { userId, totalProfit: agg.totalProfit, gamesPlayed: agg.gamesPlayed };
+            }
         }
 
         const targetUserIds = [...new Set([
             topBought?.userId,
             topFinal?.userId,
             topWin?.userId,
+            topWinner?.userId,
+            biggestLoser?.userId,
         ].filter(Boolean))];
         const targetEventIds = [...new Set([
             topBought?.eventId,
@@ -301,6 +322,15 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
 
         const usersMap = new Map(users.map((u) => [u.id, u.get({ plain: true })]));
         const eventsMap = new Map(events.map((e) => [e.id, e.get({ plain: true })]));
+
+        const getPlayerName = (userId) => {
+            const user = usersMap.get(userId);
+            if (!user) return null;
+            const full = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+            if (full) return full;
+            if (user.username) return `@${user.username}`;
+            return user.user_id ? String(user.user_id) : String(user.id);
+        };
 
         const formatUser = (userId) => {
             const user = usersMap.get(userId);
@@ -358,6 +388,22 @@ apiRouter.get('/dashboard/stats', async (req, res) => {
                     event: formatEvent(topWin.eventId),
                     finalCount: topWin.finalAmount,
                     totalBought: topWin.totalBought,
+                }
+                : null,
+            topWinner: topWinner
+                ? {
+                    totalProfit: topWinner.totalProfit,
+                    gamesPlayed: topWinner.gamesPlayed,
+                    playerName: getPlayerName(topWinner.userId),
+                    player: formatUser(topWinner.userId),
+                }
+                : null,
+            biggestLoser: biggestLoser
+                ? {
+                    totalProfit: biggestLoser.totalProfit,
+                    gamesPlayed: biggestLoser.gamesPlayed,
+                    playerName: getPlayerName(biggestLoser.userId),
+                    player: formatUser(biggestLoser.userId),
                 }
                 : null,
             generatedAt: new Date().toISOString(),
