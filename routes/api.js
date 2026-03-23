@@ -2,6 +2,7 @@ import {Router} from 'express';
 import {ChipsLog, Event, Group, RegistrationLog, sequelize, User} from '../db.js';
 import {Op} from 'sequelize';
 import {logError} from '../utils/logError.js';
+import {refreshEventMessage} from '../utils/refreshEventMessage.js';
 
 export const apiRouter = Router();
 
@@ -24,6 +25,24 @@ const parsePlayerIds = (playerIds) => {
 const toSafeInt = (value) => {
     const parsed = parseInt(value ?? 0, 10);
     return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const resolveGroupIdInput = async (rawGroupId, transaction) => {
+    const parsed = normalizeOptionalInt(rawGroupId);
+    if (parsed === null) return null;
+
+    // 1) Try direct Group PK
+    let group = await Group.findByPk(parsed, { transaction });
+    if (group) return group.id;
+
+    // 2) Try Telegram chat id (common from admin UIs)
+    group = await Group.findOne({
+        where: { telegram_chat_id: parsed },
+        transaction,
+    });
+    if (group) return group.id;
+
+    return null;
 };
 
 const DEFAULT_PAGE_LIMIT = 20;
@@ -557,6 +576,12 @@ apiRouter.post('/events', async (req, res) => {
             return res.status(400).json({ error: 'name and time are required' });
         }
 
+        const resolvedGroupId = await resolveGroupIdInput(groupId, t);
+        if (groupId !== null && groupId !== undefined && groupId !== '' && resolvedGroupId === null) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Invalid groupId: group not found' });
+        }
+
         const parsedPlayerIds = parsePlayerIds(playerIds);
         if (parsedPlayerIds === null) {
             await t.rollback();
@@ -575,7 +600,7 @@ apiRouter.post('/events', async (req, res) => {
         }
 
         const event = await Event.create({
-            groupId: normalizeOptionalInt(groupId),
+            groupId: resolvedGroupId,
             telegram_message_id: normalizeOptionalInt(telegram_message_id),
             is_draft: Boolean(is_draft),
             scheduled_publish_at: scheduled_publish_at || null,
@@ -639,6 +664,8 @@ apiRouter.put('/events/:id', async (req, res) => {
             return res.status(404).json({ error: 'Event not found' });
         }
 
+        let shouldRefreshPublishedMessage = false;
+
         const allowedFields = [
             'groupId', 'telegram_message_id', 'is_draft', 'scheduled_publish_at', 'name', 'location',
             'time', 'players', 'blinds', 'description', 'image_url', 'is_closed', 'dealer_id', 'dealer_tips',
@@ -647,7 +674,16 @@ apiRouter.put('/events/:id', async (req, res) => {
         for (const key of allowedFields) {
             if (Object.prototype.hasOwnProperty.call(req.body, key)) {
                 if (['groupId', 'telegram_message_id', 'dealer_id', 'dealer_tips'].includes(key)) {
-                    event[key] = normalizeOptionalInt(req.body[key]);
+                    if (key === 'groupId') {
+                        const resolvedGroupId = await resolveGroupIdInput(req.body.groupId, t);
+                        if (req.body.groupId !== null && req.body.groupId !== undefined && req.body.groupId !== '' && resolvedGroupId === null) {
+                            await t.rollback();
+                            return res.status(400).json({ error: 'Invalid groupId: group not found' });
+                        }
+                        event.groupId = resolvedGroupId;
+                    } else {
+                        event[key] = normalizeOptionalInt(req.body[key]);
+                    }
                 } else {
                     event[key] = req.body[key];
                 }
@@ -693,6 +729,7 @@ apiRouter.put('/events/:id', async (req, res) => {
                     join_time: now,
                     is_waiting: false,
                 })), { transaction: t });
+                shouldRefreshPublishedMessage = true;
             }
 
             const toRemoveRegs = currentJoinRegs.filter((r) => !incomingUserIds.has(r.userId));
@@ -730,6 +767,15 @@ apiRouter.put('/events/:id', async (req, res) => {
             include: [{ model: User, attributes: ['id', 'user_id', 'first_name', 'last_name', 'username', 'is_subscribed'] }],
             order: [['join_time', 'ASC']],
         });
+
+        if (
+            shouldRefreshPublishedMessage &&
+            updatedEvent &&
+            !updatedEvent.is_draft &&
+            updatedEvent.telegram_message_id
+        ) {
+            await refreshEventMessage(updatedEvent, updatedEvent.is_closed);
+        }
 
         return res.json({
             event: updatedEvent?.get({ plain: true }),
@@ -811,5 +857,50 @@ apiRouter.delete('/chips-logs/:id', async (req, res) => {
     } catch (err) {
         logError('API DELETE /chips-logs/:id error', err);
         return res.status(500).json({ error: 'Failed to delete chips log' });
+    }
+});
+
+/** DELETE /api/registrations/:id - delete registration and refresh event post if published */
+apiRouter.delete('/registrations/:id', async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Invalid registration id' });
+        }
+
+        const registration = await RegistrationLog.findByPk(id, { transaction: t });
+        if (!registration) {
+            await t.rollback();
+            return res.status(404).json({ error: 'Registration log not found' });
+        }
+
+        const linkedLogsCount = await ChipsLog.count({
+            where: { regId: registration.id },
+            transaction: t,
+        });
+        if (linkedLogsCount > 0) {
+            await t.rollback();
+            return res.status(409).json({
+                error: 'Cannot delete registration with existing chips logs',
+                linkedLogsCount,
+            });
+        }
+
+        const event = await Event.findByPk(registration.eventId, { transaction: t });
+
+        await registration.destroy({ transaction: t });
+        await t.commit();
+
+        if (event && !event.is_draft && event.telegram_message_id) {
+            await refreshEventMessage(event, event.is_closed);
+        }
+
+        return res.status(204).send();
+    } catch (err) {
+        await t.rollback();
+        logError('API DELETE /registrations/:id error', err);
+        return res.status(500).json({ error: 'Failed to delete registration log' });
     }
 });

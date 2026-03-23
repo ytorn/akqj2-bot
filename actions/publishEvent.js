@@ -42,7 +42,11 @@ export const publishEvent = ({ isScheduled, id }) => {
                 { where: { id: event.id } }
             );
 
-            await refreshEventMessage(event, false);
+            // Reload to ensure we have persisted telegram_message_id for message refresh.
+            const updatedEvent = await Event.findByPk(event.id);
+            if (updatedEvent) {
+                await refreshEventMessage(updatedEvent, false);
+            }
 
             if (!isScheduled) {
                 await ctx.answerCbQuery('📤 Подію опубліковано!');

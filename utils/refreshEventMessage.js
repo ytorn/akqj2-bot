@@ -15,7 +15,7 @@ export const refreshEventMessage = async (event, isClosed) => {
 
     try {
         const logs = await RegistrationLog.findAll({
-            where: { event_id: event.id },
+            where: { eventId: event.id },
             order: [['join_time', 'ASC']],
         });
 
