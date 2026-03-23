@@ -61,7 +61,14 @@ const auth = basicAuth({
     challenge: true,
 });
 app.use("/admin", auth);
-app.use("/api", auth, apiRouter);
+app.use("/api", (req, res, next) => {
+    // Allow public image preview endpoint so admin UI <img src="..."> works
+    // without embedding Basic Auth credentials in URL.
+    if (req.method === 'GET' && /^\/events\/\d+\/image$/.test(req.path)) {
+        return next();
+    }
+    return auth(req, res, next);
+}, apiRouter);
 
 const db = new Database("eventbot.sqlite");
 const bot = new Telegraf(config.botToken);
