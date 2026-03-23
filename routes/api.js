@@ -3,8 +3,38 @@ import {ChipsLog, Event, Group, RegistrationLog, sequelize, User} from '../db.js
 import {Op} from 'sequelize';
 import {logError} from '../utils/logError.js';
 import {refreshEventMessage} from '../utils/refreshEventMessage.js';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+import {fileURLToPath} from 'url';
+import config from '../config.js';
 
 export const apiRouter = Router();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads', 'event-images');
+if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+const imageUpload = multer({
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+        filename: (_req, file, cb) => {
+            const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
+            cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+        },
+    }),
+    fileFilter: (_req, file, cb) => {
+        if (!file.mimetype?.startsWith('image/')) {
+            cb(new Error('Only image files are allowed'));
+            return;
+        }
+        cb(null, true);
+    },
+    limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 const parseId = (value) => {
     const parsed = parseInt(value, 10);
@@ -58,6 +88,18 @@ const parsePagination = (query) => {
 
     const offset = (page - 1) * limit;
     return { page, limit, offset };
+};
+
+const getEventImagePreviewUrl = (eventId) => `/api/events/${eventId}/image`;
+const UPLOADS_PUBLIC_PREFIX = '/uploads/event-images/';
+
+const extractLocalUploadFilename = (imageRef) => {
+    if (!imageRef) return null;
+    const normalized = String(imageRef);
+    const markerIndex = normalized.indexOf(UPLOADS_PUBLIC_PREFIX);
+    if (markerIndex === -1) return null;
+    const fileName = normalized.slice(markerIndex + UPLOADS_PUBLIC_PREFIX.length).split('?')[0];
+    return fileName || null;
 };
 
 /** GET /api/users - list users (paginated: ?page=1&limit=20) */
@@ -265,7 +307,13 @@ apiRouter.get('/events', async (req, res) => {
             limit,
             offset,
         });
-        const data = events.map((e) => e.get({ plain: true }));
+        const data = events.map((e) => {
+            const plain = e.get({ plain: true });
+            return {
+                ...plain,
+                imagePreviewUrl: plain.image_url ? getEventImagePreviewUrl(plain.id) : null,
+            };
+        });
         const totalPages = Math.ceil(total / limit) || 1;
         res.json({
             events: data,
@@ -317,13 +365,159 @@ apiRouter.get('/events/:id', async (req, res) => {
         const chipsLogsPlain = chipsLogs.map((c) => c.get({ plain: true }));
 
         res.json({
-            event: eventPlain,
+            event: {
+                ...eventPlain,
+                imagePreviewUrl: eventPlain.image_url ? getEventImagePreviewUrl(eventPlain.id) : null,
+            },
             registrations: registrationsPlain,
             chipsLogs: chipsLogsPlain,
         });
     } catch (err) {
         logError('API GET /events/:id error', err);
         res.status(500).json({ error: 'Failed to fetch event' });
+    }
+});
+
+/** GET /api/events/:id/image - resolves event image for admin preview (URL/file_id/local file) */
+apiRouter.get('/events/:id/image', async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            return res.status(400).json({ error: 'Invalid event id' });
+        }
+
+        const event = await Event.findByPk(id);
+        if (!event) {
+            return res.status(404).json({ error: 'Event not found' });
+        }
+        if (!event.image_url) {
+            return res.status(404).json({ error: 'Event has no image' });
+        }
+
+        const imageRef = String(event.image_url);
+        const localFile = extractLocalUploadFilename(imageRef);
+        if (localFile) {
+            const absolutePath = path.join(UPLOADS_DIR, localFile);
+            if (!fs.existsSync(absolutePath)) {
+                return res.status(404).json({ error: 'Image file not found' });
+            }
+            return res.sendFile(absolutePath);
+        }
+
+        if (imageRef.startsWith('http://') || imageRef.startsWith('https://')) {
+            return res.redirect(imageRef);
+        }
+
+        // Otherwise treat as Telegram file_id and proxy bytes through this API.
+        const getFileResponse = await fetch(
+            `https://api.telegram.org/bot${config.botToken}/getFile?file_id=${encodeURIComponent(imageRef)}`
+        );
+        if (!getFileResponse.ok) {
+            return res.status(502).json({ error: 'Failed to resolve Telegram image' });
+        }
+        const getFileData = await getFileResponse.json();
+        const filePath = getFileData?.result?.file_path;
+        if (!filePath) {
+            return res.status(404).json({ error: 'Telegram image not found' });
+        }
+
+        const fileResponse = await fetch(`https://api.telegram.org/file/bot${config.botToken}/${filePath}`);
+        if (!fileResponse.ok) {
+            return res.status(502).json({ error: 'Failed to download Telegram image' });
+        }
+
+        const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
+        const arrayBuffer = await fileResponse.arrayBuffer();
+        res.setHeader('Content-Type', contentType);
+        return res.send(Buffer.from(arrayBuffer));
+    } catch (err) {
+        logError('API GET /events/:id/image error', err);
+        return res.status(500).json({ error: 'Failed to fetch event image' });
+    }
+});
+
+/** POST /api/events/:id/image - upload/replace event image from admin (multipart/form-data, field: image) */
+apiRouter.post('/events/:id/image', imageUpload.single('image'), async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            return res.status(400).json({ error: 'Invalid event id' });
+        }
+
+        const event = await Event.findByPk(id);
+        if (!event) {
+            return res.status(404).json({ error: 'Event not found' });
+        }
+
+        if (!req.file) {
+            return res.status(400).json({ error: 'image file is required' });
+        }
+
+        if (!config.apiUrl) {
+            return res.status(500).json({ error: 'API_URL is required to build image URL' });
+        }
+
+        const oldLocalFile = extractLocalUploadFilename(event.image_url);
+        const imagePath = `${UPLOADS_PUBLIC_PREFIX}${req.file.filename}`;
+        const imageUrl = `${String(config.apiUrl).replace(/\/$/, '')}${imagePath}`;
+        event.image_url = imageUrl;
+        await event.save();
+
+        if (oldLocalFile && oldLocalFile !== req.file.filename) {
+            const oldPath = path.join(UPLOADS_DIR, oldLocalFile);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        if (!event.is_draft && event.telegram_message_id) {
+            await refreshEventMessage(event, event.is_closed);
+        }
+
+        return res.json({
+            event: {
+                ...event.get({ plain: true }),
+                imagePreviewUrl: getEventImagePreviewUrl(event.id),
+            },
+        });
+    } catch (err) {
+        logError('API POST /events/:id/image error', err);
+        return res.status(500).json({ error: 'Failed to upload event image' });
+    }
+});
+
+/** DELETE /api/events/:id/image - remove event image */
+apiRouter.delete('/events/:id/image', async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            return res.status(400).json({ error: 'Invalid event id' });
+        }
+
+        const event = await Event.findByPk(id);
+        if (!event) {
+            return res.status(404).json({ error: 'Event not found' });
+        }
+
+        const oldLocalFile = extractLocalUploadFilename(event.image_url);
+        event.image_url = null;
+        await event.save();
+
+        if (oldLocalFile) {
+            const oldPath = path.join(UPLOADS_DIR, oldLocalFile);
+            if (fs.existsSync(oldPath)) {
+                fs.unlinkSync(oldPath);
+            }
+        }
+
+        if (!event.is_draft && event.telegram_message_id) {
+            await refreshEventMessage(event, event.is_closed);
+        }
+
+        return res.status(204).send();
+    } catch (err) {
+        logError('API DELETE /events/:id/image error', err);
+        return res.status(500).json({ error: 'Failed to delete event image' });
     }
 });
 
