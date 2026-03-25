@@ -7,171 +7,177 @@ import { getClickableName } from "../utils/getClickableName.js";
 import { formatUsername } from "../utils/formatUsername.js";
 import config from "../config.js";
 import dayjs from "dayjs";
+import {logError} from "../utils/logError.js";
 
 export const listEvents = async (ctx) => {
-    if (ctx.chat.type !== 'private') return;
+    try {
+        if (ctx.chat.type !== 'private') return;
 
-    const fromId = ctx.from.id;
-    const isAdmin = await isUserAdminInGroup(ctx.telegram, config.groupId, fromId);
-    if (!isAdmin) return ctx.reply('⛔ Admins only');
+        const fromId = ctx.from.id;
+        const isAdmin = await isUserAdminInGroup(ctx.telegram, config.groupId, fromId);
+        if (!isAdmin) return ctx.reply('⛔ Admins only');
 
-    const now = dayjs.utc().toDate();
-    const twentyFourHours = 24 * 60 * 60 * 1000;
-    const twentyFourHoursAgo = new Date(now.getTime() - twentyFourHours);
+        const now = dayjs.utc().toDate();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        const twentyFourHoursAgo = new Date(now.getTime() - twentyFourHours);
 
-    const events = await Event.findAll({
-        where: {
-            [Op.or]: [
-                { is_draft: true },
-                {
-                    is_draft: false,
-                    time: { 
-                        [Op.gt]: twentyFourHoursAgo
+        const events = await Event.findAll({
+            where: {
+                [Op.or]: [
+                    { is_draft: true },
+                    {
+                        is_draft: false,
+                        time: {
+                            [Op.gt]: twentyFourHoursAgo
+                        }
                     }
-                }
-            ]
-        },
-        order: [['time', 'ASC']]
-    });
-
-    if (!events.length) return ctx.reply(eventsNotFound);
-
-    for (const event of events) {
-        const isClosed = event.is_closed;
-
-        const purchaseLogs = await ChipsLog.findAll({
-            where: {
-                eventId: event.id,
-                is_final: false,
-                confirmed: true
+                ]
             },
-            order: [['createdAt', 'ASC']]
+            order: [['time', 'ASC']]
         });
 
-        const finalLogs = await ChipsLog.findAll({
-            where: {
-                eventId: event.id,
-                is_final: true
-            },
-            order: [['createdAt', 'ASC']]
-        });
+        if (!events.length) return ctx.reply(eventsNotFound);
 
-        const allLogs = [...purchaseLogs, ...finalLogs];
-        const userIds = [...new Set(allLogs.map(log => log.userId))];
-        const users = await User.findAll({
-            where: {
-                id: { [Op.in]: userIds }
-            }
-        });
-        const usersMap = {};
-        for (const user of users) {
-            usersMap[user.id] = user;
-        }
+        for (const event of events) {
+            const isClosed = event.is_closed;
 
-        const allRegIds = [...new Set(allLogs.map(log => log.regId))];
-        const registrations = await RegistrationLog.findAll({
-            where: {
-                id: { [Op.in]: allRegIds }
-            }
-        });
-        const registrationsMap = {};
-        for (const reg of registrations) {
-            registrationsMap[reg.id] = reg;
-        }
-
-        const chipsByReg = {};
-        for (const log of purchaseLogs) {
-            const userId = log.userId;
-            const user = usersMap[userId];
-            if (!user) continue;
-            
-            const regId = log.regId;
-            if (!chipsByReg[regId]) {
-                chipsByReg[regId] = {
-                    user: user,
-                    regId: regId,
-                    registration: registrationsMap[regId],
-                    amounts: []
-                };
-            }
-            chipsByReg[regId].amounts.push(log.amount);
-        }
-
-        const finalByReg = {};
-        for (const log of finalLogs) {
-            const userId = log.userId;
-            const user = usersMap[userId];
-            if (!user) continue;
-            
-            const regId = log.regId;
-            if (!finalByReg[regId]) {
-                finalByReg[regId] = {
-                    user: user,
-                    regId: regId,
-                    registration: registrationsMap[regId],
-                    amount: log.amount
-                };
-            }
-        }
-
-        let chipsInfoText = '';
-        if (Object.keys(chipsByReg).length > 0) {
-            chipsInfoText = '\n\n<b>Входи:</b>\n';
-            for (const regId in chipsByReg) {
-                const { user, amounts, registration } = chipsByReg[regId];
-                const total = amounts.reduce((sum, amount) => sum + amount, 0);
-                const amountsStr = amounts.join(' + ');
-                
-                let displayName;
-                if (registration && registration.type === 'friend') {
-                    displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
-                } else {
-                    displayName = getClickableName(user);
-                }
-                
-                chipsInfoText += `${displayName}: <b>${total}</b> (${amountsStr})\n`;
-            }
-        }
-
-        if (Object.keys(finalByReg).length > 0) {
-            chipsInfoText += '\n\n<b>Фінальний результат:</b>\n';
-
-            if (event.dealer_tips != null) {
-                chipsInfoText += `🃏 Дилер (чайові): <b>${event.dealer_tips}</b>\n`;
-            }
-
-            for (const regId in finalByReg) {
-                const { user, amount, registration } = finalByReg[regId];
-                
-                const chipsEntry = chipsByReg[regId];
-                const amounts = chipsEntry ? chipsEntry.amounts : [];
-                const initial = amounts.length > 0
-                    ? amounts.reduce((sum, amount) => sum + amount, 0)
-                    : 0;
-
-                let displayName;
-                if (registration && registration.type === 'friend') {
-                    displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
-                } else {
-                    displayName = getClickableName(user);
-                }
-                
-                chipsInfoText += `${displayName}: Вихід: <b>${amount}</b> Тотал: <b>${amount - initial}</b>\n`;
-            }
-        }
-
-        const eventText = eventItem(event) + chipsInfoText;
-
-        if (event.image_url) {
-            await ctx.replyWithPhoto(event.image_url, {
-                caption: eventText,
-                parse_mode: 'HTML',
-                reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
+            const purchaseLogs = await ChipsLog.findAll({
+                where: {
+                    eventId: event.id,
+                    is_final: false,
+                    confirmed: true
+                },
+                order: [['createdAt', 'ASC']]
             });
-        } else {
-            await ctx.replyWithHTML(eventText, {
-                reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
+
+            const finalLogs = await ChipsLog.findAll({
+                where: {
+                    eventId: event.id,
+                    is_final: true
+                },
+                order: [['createdAt', 'ASC']]
             });
+
+            const allLogs = [...purchaseLogs, ...finalLogs];
+            const userIds = [...new Set(allLogs.map(log => log.userId))];
+            const users = await User.findAll({
+                where: {
+                    id: { [Op.in]: userIds }
+                }
+            });
+            const usersMap = {};
+            for (const user of users) {
+                usersMap[user.id] = user;
+            }
+
+            const allRegIds = [...new Set(allLogs.map(log => log.regId))];
+            const registrations = await RegistrationLog.findAll({
+                where: {
+                    id: { [Op.in]: allRegIds }
+                }
+            });
+            const registrationsMap = {};
+            for (const reg of registrations) {
+                registrationsMap[reg.id] = reg;
+            }
+
+            const chipsByReg = {};
+            for (const log of purchaseLogs) {
+                const userId = log.userId;
+                const user = usersMap[userId];
+                if (!user) continue;
+
+                const regId = log.regId;
+                if (!chipsByReg[regId]) {
+                    chipsByReg[regId] = {
+                        user: user,
+                        regId: regId,
+                        registration: registrationsMap[regId],
+                        amounts: []
+                    };
+                }
+                chipsByReg[regId].amounts.push(log.amount);
+            }
+
+            const finalByReg = {};
+            for (const log of finalLogs) {
+                const userId = log.userId;
+                const user = usersMap[userId];
+                if (!user) continue;
+
+                const regId = log.regId;
+                if (!finalByReg[regId]) {
+                    finalByReg[regId] = {
+                        user: user,
+                        regId: regId,
+                        registration: registrationsMap[regId],
+                        amount: log.amount
+                    };
+                }
+            }
+
+            let chipsInfoText = '';
+            if (Object.keys(chipsByReg).length > 0) {
+                chipsInfoText = '\n\n<b>Входи:</b>\n';
+                for (const regId in chipsByReg) {
+                    const { user, amounts, registration } = chipsByReg[regId];
+                    const total = amounts.reduce((sum, amount) => sum + amount, 0);
+                    const amountsStr = amounts.join(' + ');
+
+                    let displayName;
+                    if (registration && registration.type === 'friend') {
+                        displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
+                    } else {
+                        displayName = getClickableName(user);
+                    }
+
+                    chipsInfoText += `${displayName}: <b>${total}</b> (${amountsStr})\n`;
+                }
+            }
+
+            if (Object.keys(finalByReg).length > 0) {
+                chipsInfoText += '\n\n<b>Фінальний результат:</b>\n';
+
+                if (event.dealer_tips != null) {
+                    chipsInfoText += `🃏 Дилер (чайові): <b>${event.dealer_tips}</b>\n`;
+                }
+
+                for (const regId in finalByReg) {
+                    const { user, amount, registration } = finalByReg[regId];
+
+                    const chipsEntry = chipsByReg[regId];
+                    const amounts = chipsEntry ? chipsEntry.amounts : [];
+                    const initial = amounts.length > 0
+                        ? amounts.reduce((sum, amount) => sum + amount, 0)
+                        : 0;
+
+                    let displayName;
+                    if (registration && registration.type === 'friend') {
+                        displayName = `➕ від ${formatUsername(user)} (ID ${regId})`;
+                    } else {
+                        displayName = getClickableName(user);
+                    }
+
+                    chipsInfoText += `${displayName}: Вихід: <b>${amount}</b> Тотал: <b>${amount - initial}</b>\n`;
+                }
+            }
+
+            const eventText = eventItem(event) + chipsInfoText;
+
+            if (event.image_url) {
+                await ctx.replyWithPhoto(event.image_url, {
+                    caption: eventText,
+                    parse_mode: 'HTML',
+                    reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
+                });
+            } else {
+                await ctx.replyWithHTML(eventText, {
+                    reply_markup: adminControlButtons(event.id, isClosed, event.is_draft, Boolean(event.scheduled_publish_at))
+                });
+            }
         }
+    } catch (err) {
+        console.log(err)
+        logError('❌ List events error:', err)
     }
 }
