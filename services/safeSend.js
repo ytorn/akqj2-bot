@@ -2,6 +2,8 @@ import {User, Message} from "../db.js";
 import {logError} from "../utils/logError.js";
 import {logMessage} from "../utils/logMessage.js";
 import bot from "../index.js";
+import fs from 'fs';
+import path from 'path';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -55,7 +57,27 @@ export const safeSendMessage = async (chatId, message, options = {}, metadata = 
 
 export const safeSendPhoto = async (chatId, photoUrl, options = {}, metadata = {}) => {
     try {
-        const result = await bot.telegram.sendPhoto(chatId, photoUrl, { parse_mode: 'HTML', ...options });
+        let photoInput = photoUrl;
+
+        // If photoUrl points to our own uploads, send the local file directly.
+        // This prevents Telegram from downloading a URL that may return HTML/404.
+        if (typeof photoUrl === 'string') {
+            const match = photoUrl.match(/\/uploads\/event-images\/([^/?#]+)$/i);
+            if (match?.[1]) {
+                const fileName = match[1];
+                const localPath = path.join(process.cwd(), 'uploads', 'event-images', fileName);
+                if (fs.existsSync(localPath)) {
+                    const stream = fs.createReadStream(localPath);
+                    stream.on('error', (streamErr) => {
+                        // Prevent unhandled stream errors from affecting the process.
+                        logError(`❌ Failed to read local image file: ${localPath}`, streamErr);
+                    });
+                    photoInput = stream;
+                }
+            }
+        }
+
+        const result = await bot.telegram.sendPhoto(chatId, photoInput, { parse_mode: 'HTML', ...options });
         
         logMessage('photo', chatId, options?.caption);
 

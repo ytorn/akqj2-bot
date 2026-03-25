@@ -465,13 +465,22 @@ apiRouter.post('/events/:id/image', imageUpload.single('image'), async (req, res
 
         if (oldLocalFile && oldLocalFile !== req.file.filename) {
             const oldPath = path.join(UPLOADS_DIR, oldLocalFile);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+            try {
+                if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                }
+            } catch (fsErr) {
+                // Image replacement shouldn't block bot publishing.
+                logError('Failed to delete old local event image', fsErr);
             }
         }
 
         if (!event.is_draft && event.telegram_message_id) {
-            await refreshEventMessage(event, event.is_closed);
+            try {
+                await refreshEventMessage(event, event.is_closed);
+            } catch (refreshErr) {
+                logError('Failed to refresh telegram message after image upload', refreshErr);
+            }
         }
 
         return res.json({
@@ -505,13 +514,21 @@ apiRouter.delete('/events/:id/image', async (req, res) => {
 
         if (oldLocalFile) {
             const oldPath = path.join(UPLOADS_DIR, oldLocalFile);
-            if (fs.existsSync(oldPath)) {
-                fs.unlinkSync(oldPath);
+            try {
+                if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                }
+            } catch (fsErr) {
+                logError('Failed to delete local event image after delete', fsErr);
             }
         }
 
         if (!event.is_draft && event.telegram_message_id) {
-            await refreshEventMessage(event, event.is_closed);
+            try {
+                await refreshEventMessage(event, event.is_closed);
+            } catch (refreshErr) {
+                logError('Failed to refresh telegram message after image delete', refreshErr);
+            }
         }
 
         return res.status(204).send();
