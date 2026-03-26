@@ -60,7 +60,7 @@ const auth = basicAuth({
     users: adminUsers,
     challenge: true,
 });
-app.use("/admin", auth);
+app.use("/poker", auth);
 app.use("/api", (req, res, next) => {
     // Allow public image preview endpoint so admin UI <img src="..."> works
     // without embedding Basic Auth credentials in URL.
