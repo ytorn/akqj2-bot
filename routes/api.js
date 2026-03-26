@@ -102,13 +102,48 @@ const extractLocalUploadFilename = (imageRef) => {
     return fileName || null;
 };
 
-/** GET /api/users - list users (paginated: ?page=1&limit=20) */
+/** GET /api/users - list users (paginated + search + sorting) */
 apiRouter.get('/users', async (req, res) => {
     try {
         const { page, limit, offset } = parsePagination(req.query);
-        const total = await User.count();
+        const rawQuery = String(req.query.q ?? '').trim();
+        const normalizedQuery = rawQuery.startsWith('@') ? rawQuery.slice(1) : rawQuery;
+        const maybeTelegramId = parseInt(normalizedQuery, 10);
+        const isTelegramIdQuery = !Number.isNaN(maybeTelegramId) && String(maybeTelegramId) === normalizedQuery;
+
+        const where = {};
+        if (normalizedQuery) {
+            where[Op.or] = [
+                { first_name: { [Op.like]: `%${normalizedQuery}%` } },
+                { last_name: { [Op.like]: `%${normalizedQuery}%` } },
+                { username: { [Op.like]: `%${normalizedQuery}%` } },
+            ];
+            if (isTelegramIdQuery) {
+                where[Op.or].push({ user_id: String(maybeTelegramId) });
+            }
+        }
+
+        const sortBy = String(req.query.sortBy ?? 'id').toLowerCase();
+        const sortOrder = String(req.query.sortOrder ?? 'asc').toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+        let order = [['id', sortOrder]];
+
+        if (sortBy === 'name') {
+            order = [
+                ['first_name', sortOrder],
+                ['last_name', sortOrder],
+                ['id', 'ASC'],
+            ];
+        } else if (sortBy === 'username') {
+            order = [
+                ['username', sortOrder],
+                ['id', 'ASC'],
+            ];
+        }
+
+        const total = await User.count({ where });
         const users = await User.findAll({
-            order: [['id', 'ASC']],
+            where,
+            order,
             limit,
             offset,
         });
@@ -123,6 +158,11 @@ apiRouter.get('/users', async (req, res) => {
                 totalPages,
                 hasNext: page < totalPages,
                 hasPrev: page > 1,
+            },
+            filters: {
+                q: rawQuery || null,
+                sortBy,
+                sortOrder: sortOrder.toLowerCase(),
             },
         });
     } catch (err) {
