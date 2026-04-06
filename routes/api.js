@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'url';
 import config from '../config.js';
+import bot from '../index.js';
 
 export const apiRouter = Router();
 
@@ -575,6 +576,52 @@ apiRouter.delete('/events/:id/image', async (req, res) => {
     } catch (err) {
         logError('API DELETE /events/:id/image error', err);
         return res.status(500).json({ error: 'Failed to delete event image' });
+    }
+});
+
+/** DELETE /api/events/:id - delete event with related registrations/chips logs */
+apiRouter.delete('/events/:id', async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Invalid event id' });
+        }
+
+        const event = await Event.findByPk(id, { transaction: t });
+        if (!event) {
+            await t.rollback();
+            return res.status(404).json({ error: 'Event not found' });
+        }
+
+        const eventPlain = event.get({ plain: true });
+
+        await ChipsLog.destroy({
+            where: { eventId: id },
+            transaction: t,
+        });
+        await RegistrationLog.destroy({
+            where: { eventId: id },
+            transaction: t,
+        });
+        await event.destroy({ transaction: t });
+        await t.commit();
+
+        // Best effort: remove published Telegram post if present.
+        if (!eventPlain.is_draft && eventPlain.telegram_message_id) {
+            try {
+                await bot.telegram.deleteMessage(config.groupId, eventPlain.telegram_message_id);
+            } catch (telegramErr) {
+                logError('Failed to delete Telegram event message after event deletion', telegramErr);
+            }
+        }
+
+        return res.status(204).send();
+    } catch (err) {
+        await t.rollback();
+        logError('API DELETE /events/:id error', err);
+        return res.status(500).json({ error: 'Failed to delete event' });
     }
 });
 
