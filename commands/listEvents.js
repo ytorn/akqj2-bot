@@ -106,14 +106,12 @@ export const listEvents = async (ctx) => {
                 if (!user) continue;
 
                 const regId = log.regId;
-                if (!finalByReg[regId]) {
-                    finalByReg[regId] = {
-                        user: user,
-                        regId: regId,
-                        registration: registrationsMap[regId],
-                        amount: log.amount
-                    };
-                }
+                finalByReg[regId] = {
+                    user: user,
+                    regId: regId,
+                    registration: registrationsMap[regId],
+                    amount: log.amount
+                };
             }
 
             let chipsInfoText = '';

@@ -1117,8 +1117,12 @@ apiRouter.patch('/chips-logs/:id', async (req, res) => {
             return res.status(400).json({ error: 'Invalid chips log id' });
         }
 
-        const amount = parseId(req.body?.amount);
-        if (amount === null || amount < 0) {
+        const amountRaw = req.body?.amount;
+        if (amountRaw === null || amountRaw === undefined || amountRaw === '') {
+            return res.status(400).json({ error: 'amount must be an integer >= 0' });
+        }
+        const amount = parseInt(amountRaw, 10);
+        if (Number.isNaN(amount) || amount < 0 || !Number.isInteger(amount)) {
             return res.status(400).json({ error: 'amount must be an integer >= 0' });
         }
 
@@ -1127,8 +1131,8 @@ apiRouter.patch('/chips-logs/:id', async (req, res) => {
             return res.status(404).json({ error: 'Chips log not found' });
         }
 
-        chipLog.amount = amount;
-        await chipLog.save();
+        await ChipsLog.update({ amount }, { where: { id } });
+        await chipLog.reload();
 
         return res.json({ chipsLog: chipLog.get({ plain: true }) });
     } catch (err) {

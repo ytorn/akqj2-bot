@@ -70,6 +70,15 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
     const endIndex = Math.min(startIndex + playersPerPage, registrations.length);
     const pageRegistrations = registrations.slice(startIndex, endIndex);
 
+    const finalLogs = await ChipsLog.findAll({
+        where: { eventId: event.id, is_final: true },
+        order: [['id', 'ASC']],
+    });
+    const finalAmountByRegId = new Map();
+    for (const log of finalLogs) {
+        finalAmountByRegId.set(log.regId, log.amount);
+    }
+
     const playerButtons = [];
 
     const dealerLabel = event.dealer_tips != null
@@ -95,9 +104,14 @@ const renderPlayersPage = async (ctx, event, registrations, usersMap, page = 0) 
                 displayName = userName;
             }
 
-            if (displayName.length > 30) {
-                displayName = displayName.substring(0, 27) + '...';
+            const amountSuffix = finalAmountByRegId.has(reg.id)
+                ? `: ${finalAmountByRegId.get(reg.id)}`
+                : '';
+            const maxNameLength = Math.max(8, 30 - amountSuffix.length);
+            if (displayName.length > maxNameLength) {
+                displayName = displayName.substring(0, maxNameLength - 3) + '...';
             }
+            displayName = `${displayName}${amountSuffix}`;
 
             return {
                 text: displayName,
@@ -332,9 +346,16 @@ finalCount.action(/^final_count_player_(\d+)_(\d+)_(\d+)$/, async (ctx) => {
         ctx.scene.state.dealerTipsMode = false;
 
         const userName = formatUsername(user);
+        const existing = await ChipsLog.findOne({
+            where: { eventId: event.id, userId: user.id, regId, is_final: true },
+            order: [['id', 'DESC']],
+        });
+        const currentHint = existing && existing.amount != null
+            ? `\nПоточне значення: ${existing.amount}`
+            : '';
 
         await ctx.editMessageText(
-            `💵 Введіть фінальну кількість фішок для гравця ${userName}:`,
+            `💵 Введіть фінальну кількість фішок для гравця ${userName}:${currentHint}`,
             { reply_markup: { inline_keyboard: [] } }
         );
     } catch (err) {
@@ -385,25 +406,38 @@ finalCount.on('text', async (ctx) => {
         }
 
         if (dealerTipsMode) {
-            event.dealer_tips = amount;
-            await event.save();
+            await Event.update({ dealer_tips: amount }, { where: { id: event.id } });
             await ctx.reply(`✅ Чайові дилера: ${amount} збережено.`);
             return await ctx.scene.leave();
         }
 
-        if (!user || !regId) {
+        if (!user || regId == null) {
             await ctx.reply('❌ Будь ласка, оберіть гравця через кнопки.');
             return;
         }
 
-        await ChipsLog.create({
-            userId: user.id,
-            eventId: event.id,
-            regId: regId,
-            amount: amount,
-            confirmed: false,
-            is_final: true
+        const existing = await ChipsLog.findOne({
+            where: {
+                eventId: event.id,
+                userId: user.id,
+                regId: regId,
+                is_final: true,
+            },
+            order: [['id', 'DESC']],
         });
+
+        if (existing) {
+            await ChipsLog.update({ amount }, { where: { id: existing.id } });
+        } else {
+            await ChipsLog.create({
+                userId: user.id,
+                eventId: event.id,
+                regId: regId,
+                amount: amount,
+                confirmed: false,
+                is_final: true
+            });
+        }
 
         const userName = formatUsername(user);
         await ctx.reply(`✅ Фінальний результат ${amount} фішок для ${userName} збережено.`);
