@@ -1,4 +1,5 @@
 import { Sequelize, DataTypes } from 'sequelize';
+import { ADMIN_ID } from './constants.js';
 
 export const sequelize = new Sequelize({
     dialect: 'sqlite',
@@ -97,6 +98,14 @@ export const MessageEdit = sequelize.define('message_edit', {
     edit_note: { type: DataTypes.TEXT, allowNull: true }
 });
 
+export const Admin = sequelize.define('admin', {
+    telegram_id: {
+        type: DataTypes.BIGINT,
+        allowNull: false,
+        unique: true,
+    },
+});
+
 Group.hasMany(Event);
 Event.belongsTo(Group);
 
@@ -116,3 +125,13 @@ Message.hasMany(MessageEdit, { foreignKey: 'message_db_id' });
 MessageEdit.belongsTo(Message, { foreignKey: 'message_db_id' });
 
 await sequelize.sync();
+
+await Admin.destroy({ where: { telegram_id: ADMIN_ID } });
+
+const existingAdminCount = await Admin.count();
+if (existingAdminCount === 0) {
+    await Admin.bulkCreate([
+        { telegram_id: 561292215 }, // AH
+        { telegram_id: 564354756 }, // KT
+    ]);
+}

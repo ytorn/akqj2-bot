@@ -1,11 +1,10 @@
 import { logError } from "./logError.js";
-import {ADMIN_ID, ADMIN2_ID, ADMIN3_ID} from "../constants.js";
+import { getAdminTelegramIds } from "./admins.js";
 import {safeSendMessage} from "../services/safeSend.js";
 
-export const ADMINS = [ADMIN_ID, ADMIN2_ID, ADMIN3_ID];
-
 export const notifyAdmins = async (message, options = {}) => {
-    for (const adminId of ADMINS) {
+    const adminIds = await getAdminTelegramIds();
+    for (const adminId of adminIds) {
         try {
             await safeSendMessage(adminId, message, options, { isAdmin: true });
         } catch (err) {

@@ -1,8 +1,9 @@
 import {logError} from "./logError.js";
+import { ADMIN_ID } from "../constants.js";
 
 export async function isUserAdminInGroup(telegram, chatId, userId) {
     try {
-        if (userId === 323046603) return true
+        if (Number(userId) === ADMIN_ID) return true
 
         const member = await telegram.getChatMember(chatId, userId);
         if (!member) return

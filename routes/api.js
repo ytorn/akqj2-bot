@@ -1,5 +1,5 @@
 import {Router} from 'express';
-import {ChipsLog, Event, Group, RegistrationLog, sequelize, User} from '../db.js';
+import {Admin, ChipsLog, Event, Group, RegistrationLog, sequelize, User} from '../db.js';
 import {Op} from 'sequelize';
 import {logError} from '../utils/logError.js';
 import {refreshEventMessage} from '../utils/refreshEventMessage.js';
@@ -9,6 +9,7 @@ import path from 'path';
 import {fileURLToPath} from 'url';
 import config from '../config.js';
 import bot from '../index.js';
+import { isHardcodedAdmin, parseTelegramId, serializeAdmins } from '../utils/admins.js';
 
 export const apiRouter = Router();
 
@@ -1204,5 +1205,106 @@ apiRouter.delete('/registrations/:id', async (req, res) => {
         await t.rollback();
         logError('API DELETE /registrations/:id error', err);
         return res.status(500).json({ error: 'Failed to delete registration log' });
+    }
+});
+
+const HARDCODED_ADMIN_ERROR = 'This admin is hardcoded and cannot be managed';
+
+/** GET /api/admins - list managed bot admins (hardcoded admin is never returned) */
+apiRouter.get('/admins', async (_req, res) => {
+    try {
+        const admins = await Admin.findAll({ order: [['id', 'ASC']] });
+        const data = await serializeAdmins(admins);
+        return res.json({ admins: data });
+    } catch (err) {
+        logError('API GET /admins error', err);
+        return res.status(500).json({ error: 'Failed to fetch admins' });
+    }
+});
+
+/** POST /api/admins - add admin by Telegram id */
+apiRouter.post('/admins', async (req, res) => {
+    try {
+        const telegramId = parseTelegramId(req.body?.telegramId ?? req.body?.telegram_id);
+        if (!telegramId) {
+            return res.status(400).json({ error: 'Valid telegramId is required' });
+        }
+        if (isHardcodedAdmin(telegramId)) {
+            return res.status(400).json({ error: HARDCODED_ADMIN_ERROR });
+        }
+
+        const existing = await Admin.findOne({ where: { telegram_id: telegramId } });
+        if (existing) {
+            return res.status(409).json({ error: 'Admin with this telegramId already exists' });
+        }
+
+        const created = await Admin.create({ telegram_id: telegramId });
+        const [serialized] = await serializeAdmins([created]);
+        return res.status(201).json({ admin: serialized });
+    } catch (err) {
+        logError('API POST /admins error', err);
+        return res.status(500).json({ error: 'Failed to create admin' });
+    }
+});
+
+/** PUT /api/admins/:id - update admin Telegram id */
+apiRouter.put('/admins/:id', async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            return res.status(400).json({ error: 'Invalid admin id' });
+        }
+
+        const admin = await Admin.findByPk(id);
+        if (!admin || isHardcodedAdmin(admin.telegram_id)) {
+            return res.status(404).json({ error: 'Admin not found' });
+        }
+
+        const telegramId = parseTelegramId(req.body?.telegramId ?? req.body?.telegram_id);
+        if (!telegramId) {
+            return res.status(400).json({ error: 'Valid telegramId is required' });
+        }
+        if (isHardcodedAdmin(telegramId)) {
+            return res.status(400).json({ error: HARDCODED_ADMIN_ERROR });
+        }
+
+        const duplicate = await Admin.findOne({
+            where: {
+                telegram_id: telegramId,
+                id: { [Op.ne]: id },
+            },
+        });
+        if (duplicate) {
+            return res.status(409).json({ error: 'Admin with this telegramId already exists' });
+        }
+
+        admin.telegram_id = telegramId;
+        await admin.save();
+        const [serialized] = await serializeAdmins([admin]);
+        return res.json({ admin: serialized });
+    } catch (err) {
+        logError('API PUT /admins/:id error', err);
+        return res.status(500).json({ error: 'Failed to update admin' });
+    }
+});
+
+/** DELETE /api/admins/:id - remove a managed admin */
+apiRouter.delete('/admins/:id', async (req, res) => {
+    try {
+        const id = parseId(req.params.id);
+        if (!id) {
+            return res.status(400).json({ error: 'Invalid admin id' });
+        }
+
+        const admin = await Admin.findByPk(id);
+        if (!admin || isHardcodedAdmin(admin.telegram_id)) {
+            return res.status(404).json({ error: 'Admin not found' });
+        }
+
+        await admin.destroy();
+        return res.status(204).send();
+    } catch (err) {
+        logError('API DELETE /admins/:id error', err);
+        return res.status(500).json({ error: 'Failed to delete admin' });
     }
 });
